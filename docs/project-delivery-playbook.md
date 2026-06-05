@@ -74,6 +74,8 @@ The senior engineer should identify which teams are required and what each team 
 | Security           | RBAC, secrets, compliance, network exposure, approval                    |
 | Networking         | DNS, ingress, certificates, routing, firewall rules                      |
 | DBA / Data Team    | Databases, backups, restore, data migration, data integrity              |
+| FinOps / Finance   | Cloud cost tracking, budgeting, forecasting                              |
+| Legal / Compliance | Data privacy, GDPR, SOC2, regulatory sign-off                            |
 
 > [!WARNING]
 > Do not assume ownership.
@@ -96,6 +98,7 @@ The goal is to create a shared understanding before implementation starts.
 * Who will maintain it later?
 * What is in scope?
 * What is out of scope?
+* What is the expected impact on cloud costs (FinOps)?
 * What are the known risks?
 * What are the dependencies?
 * How do we know this is done?
@@ -144,6 +147,10 @@ The platform must use RBAC, store secrets outside of Git, restrict production ac
 
 What is needed and why.
 
+### Non-Functional Requirements (NFRs)
+
+Define Performance, Scalability, and Reliability (SLIs/SLOs) targets.
+```
 ### Owner
 
 Team or person responsible.
@@ -211,6 +218,9 @@ Senior Engineer / Tech Lead
 ### Output
 
 - architecture document
+- cost estimate (initial FinOps review)
+- SLIs/SLOs defined
+- deployment pipeline strategy (environments, branching)
 - open questions
 - risk list
 - implementation plan
@@ -247,6 +257,9 @@ Each task should answer:
 * what the acceptance criteria are
 * whether there are dependencies
 * whether the task is small enough
+
+> [!TIP]
+> Use timeboxed **Spikes** for research or discovery when the implementation path is unclear.
 
 ### Sprint Planning
 
@@ -453,6 +466,8 @@ A project is done when it is implemented, validated, documented, and owned.
 * authentication works
 * authorization works
 * secrets are handled correctly
+* **Security:** Security scans (SAST/DAST) and compliance audits are completed
+* **FinOps:** Resource tagging, budget alerts, and cost tracking are active
 * logs are available
 * metrics are available
 * alerts are configured
@@ -461,6 +476,7 @@ A project is done when it is implemented, validated, documented, and owned.
 
 * main user flow works
 * application team confirms expected behavior
+* **Compliance:** Data privacy (GDPR/SOC2) and regulatory sign-offs are obtained
 * QA validates required flows
 * external integrations work
 * no critical errors are visible
