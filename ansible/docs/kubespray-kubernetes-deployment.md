@@ -5,21 +5,25 @@
 *   [Purpose](#purpose)
 *   [What Is Kubespray?](#what-is-kubespray)
 *   [When to Use Kubespray](#when-to-use-kubespray)
-*   [Repository Structure](#repository-structure)
+*   [Version Compatibility and Pinning](#version-compatibility-and-pinning)
+*   [Repository Layout](#repository-layout)
 *   [High-Level Flow](#high-level-flow)
 *   [Prerequisites](#prerequisites)
 *   [Node Sizing and Requirements](#node-sizing-and-requirements)
-*   [Inventory Structure](#inventory-structure)
-*   [Cluster Configuration](#cluster-configuration)
+*   [Control Plane Endpoint (HA)](#control-plane-endpoint-ha)
+*   [Inventory and Configuration](#inventory-and-configuration)
+*   [Network Plugins (CNI)](#network-plugins-cni)
+*   [Air-gapped and Restricted Environments](#air-gapped-and-restricted-environments)
 *   [Deploying the Cluster](#deploying-the-cluster)
 *   [Post-Deployment Validation](#post-deployment-validation)
+*   [Post-Deployment Components](#post-deployment-components)
 *   [Scaling the Cluster](#scaling-the-cluster)
 *   [Node Replacement](#node-replacement)
 *   [Node Provisioning & OS Baseline](#node-provisioning--os-baseline)
 *   [Upgrading the Cluster](#upgrading-the-cluster)
-*   [Backup and Restore: etcd](#backup-and-restore-etcd)
-*   [General Kubernetes Backup](#general-kubernetes-backup)
+*   [Backup and Restore](#backup-and-restore)
 *   [Maintenance: Draining and Patching](#maintenance-draining-and-patching)
+*   [Security Hardening Checklist](#security-hardening-checklist)
 *   [Resetting the Cluster](#resetting-the-cluster)
 *   [Common Issues](#common-issues)
 *   [Best Practices](#best-practices)
@@ -31,13 +35,6 @@
 ## Purpose
 
 This document describes how to deploy and manage a self-managed Kubernetes cluster using **Kubespray** and **Ansible**. It provides a practical engineering runbook for provisioning clusters in environments where managed services are not available or where fine-grained control over the control plane is required.
-
-It is particularly useful for:
-*   Virtual Machine (VM) environments
-*   Bare metal deployments
-*   Private cloud infrastructure
-*   On-premises data centers
-*   Lab or development environments
 
 > [!NOTE]
 > This document is not a replacement for the official Kubespray documentation. It is a practical engineering runbook for understanding the deployment flow, required inputs, validation steps, and operational risks.
@@ -54,7 +51,7 @@ Kubespray automates:
 *   Kubernetes control plane setup
 *   Worker node provisioning
 *   Highly available etcd cluster setup
-*   CNI installation (Calico, Flannel, Cilium, etc.)
+*   CNI installation (Calico, Cilium, Flannel, etc.)
 *   Kubelet and kubeadm configuration
 
 > [!IMPORTANT]
@@ -65,49 +62,70 @@ Kubespray automates:
 ## When to Use Kubespray
 
 ### Recommended Use Cases
-*   **On-prem / Bare Metal:** When you need to run Kubernetes directly on physical hardware.
+*   **On-prem / Bare Metal:** When running Kubernetes directly on physical hardware.
 *   **Private Cloud:** Deploying on OpenStack, vSphere, or other private virtualization layers.
 *   **Restricted Environments:** Air-gapped or highly regulated environments where external access is limited.
-*   **Deep Customization:** When you need specific CNI, storage, or runtime configurations not offered by managed services.
-*   **Learning:** Excellent for understanding how Kubernetes components are wired together.
+*   **Deep Customization:** When specific CNI, storage, or runtime configurations are required.
 
 ### When Not to Use Kubespray
-*   **Public Cloud (EKS/AKS/GKE):** If a managed service is available, it is generally preferred to reduce operational overhead.
-*   **Limited Ops Capacity:** If the team cannot commit to regular control plane maintenance and incident response.
-*   **Serverless Preference:** When the goal is to avoid managing infrastructure entirely.
+*   **Public Cloud (EKS/AKS/GKE):** Managed services are generally preferred to reduce operational overhead.
+*   **No Dedicated Ops Team:** If the team cannot commit to regular control plane maintenance.
 
 ---
 
-## Repository Structure
+## Version Compatibility and Pinning
 
-The following structure is recommended for managing Kubespray-based automation within this project:
+Production deployments should always use a tested and pinned Kubespray release tag. Avoid deploying production clusters directly from the `master` branch.
 
+### 1. Pinning the Version
+Always check out a specific release tag before starting:
+
+```bash
+# Example: Pinning to v2.31.0
+git checkout v2.31.0
+```
+
+### 2. Compatibility Check
+Before deployment, verify the compatibility matrix in the Kubespray documentation between:
+*   Kubespray version
+*   Kubernetes version
+*   Ansible version
+*   Python version
+*   Target OS version
+*   Container runtime version
+*   CNI plugin version
+
+---
+
+## Repository Layout
+
+It is important to distinguish between your custom inventory repository and the upstream Kubespray repository.
+
+### Example Structure
 ```text
-ansible/
-├── README.md
-├── docs/
-│   └── kubespray-kubernetes-deployment.md
-├── inventories/
-│   └── lab/
-│       ├── inventory.ini
-│       └── group_vars/
-│           ├── all/
-│           │   └── all.yml
-│           └── k8s_cluster/
-│               └── k8s-cluster.yml
-├── scripts/
-│   ├── check-ssh.sh
-│   ├── validate-nodes.sh
-│   └── run-kubespray.sh
-└── examples/
-    └── inventory.ini.example
+cloud/
+  ansible/
+    docs/
+      kubespray-kubernetes-deployment.md
+    inventories/
+      lab/
+        inventory.ini
+        group_vars/
+          all/
+          k8s_cluster/
+```
+
+### Running the Playbook
+Run the playbook from the **upstream Kubespray directory**, pointing to your inventory in this repository:
+
+```bash
+cd kubespray
+ansible-playbook -i ../cloud/ansible/inventories/lab/inventory.ini cluster.yml -b -v
 ```
 
 ---
 
 ## High-Level Flow
-
-The deployment process follows this linear progression:
 
 ```text
 Prepare Nodes -> Configure SSH -> Create Inventory -> Configure Cluster -> Run Kubespray -> Validate Cluster
@@ -117,195 +135,141 @@ Prepare Nodes -> Configure SSH -> Create Inventory -> Configure Cluster -> Run K
 
 ## Prerequisites
 
-Before starting the deployment, ensure the following are available on your management machine:
-
-*   **Git:** To clone the Kubespray repository.
+*   **Git:** To clone Kubespray.
 *   **Python 3.x:** Required for Ansible.
-*   **venv:** Python virtual environment for dependency isolation.
-*   **SSH Access:** Public key authentication to all target nodes.
-*   **Sudo Access:** The user must have passwordless sudo or a known sudo password.
-*   **Ansible:** The version must match the requirements of your selected Kubespray release.
-
-### Initial Setup
+*   **venv:** Python virtual environment for dependencies.
+*   **SSH Access:** Public key authentication and sudo privileges on target nodes.
 
 ```bash
-# Clone Kubespray
-git clone https://github.com/kubernetes-sigs/kubespray.git
-cd kubespray
-
-# Create and activate virtual environment
+# Initial Setup
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
-
-> [!WARNING]
-> Always check Kubespray version compatibility before deployment. Supported Kubernetes versions, Ansible versions, operating systems, and container runtimes can change between releases.
 
 ---
 
 ## Node Sizing and Requirements
 
-All target nodes must meet baseline criteria for a stable cluster. The following recommendations are baseline starting points and should be adjusted based on real-world load.
-
-### 1. Hardware Requirements Table
+The following recommendations are baseline starting points. Values should be adjusted based on real-world application load.
 
 | Environment | Node Role | Node Count | CPU per Node | RAM per Node | Disk per Node | Notes |
-| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Test/Lab** | Combined control-plane + worker | 1-3 | 2-4 vCPU | 4-8 GB | 40-80 GB | Suitable for learning, testing Kubespray, validating configs |
-| **Test/Lab** | Worker | 1-2 | 2-4 vCPU | 4-8 GB | 40-80 GB | Optional, useful if testing scheduling and node separation |
+| :--- | :--- | ---------: | -----------: | -----------: | ------------------: | :--- |
+| **Test/Lab** | Combined control-plane + worker | 1-3 | 2-4 vCPU | 4-8 GB | 40-80 GB | Suitable for learning and validating configs |
+| **Test/Lab** | Worker | 1-2 | 2-4 vCPU | 4-8 GB | 40-80 GB | Optional, useful for testing scheduling |
 | **Production** | Control Plane | 3 | 4 vCPU | 8-16 GB | 80-120 GB | Required for HA control plane |
 | **Production** | Worker | 3+ | 4-8 vCPU | 16-32 GB | 100+ GB | Scale based on application workloads |
-| **Production** | Dedicated etcd | 3 | 2-4 vCPU | 8-16 GB | 80-120 GB fast disk | Optional but recommended for larger or stricter HA setups |
+| **Production** | Dedicated etcd | 3 | 2-4 vCPU | 8-16 GB | 80-120 GB fast disk | Recommended for larger or strict HA setups |
 
-### 2. Sizing Considerations
-*   **etcd Placement:** For small production clusters, control-plane nodes can also run etcd. For larger or more critical environments, use dedicated etcd nodes to isolate I/O.
-*   **Workload-Based Sizing:** Worker node sizing should be based on real workload resource requests, limits, and expected traffic.
-*   **System Overhead:** Monitoring, logging, ingress controllers, service mesh, and storage systems (e.g., Ceph) can significantly increase resource requirements.
-*   **Validation:** Always validate sizing with capacity testing before production go-live.
-
-### 3. Sizing Factors & Disclaimer
-
-> [!WARNING]
-> **Disclaimer:** These specifications are general guidelines. There is no "one size fits all" configuration for Kubernetes.
-
-Proper sizing depends on:
-*   Number of workloads (Pods)
-*   Resource requests and limits
-*   Expected network traffic and throughput
-*   Storage performance needs (IOPS)
-*   Monitoring and logging stack requirements
-*   High Availability (HA) and disaster recovery goals
+### Sizing Notes
+*   **Small Clusters:** Control-plane nodes can also run etcd.
+*   **Critical Environments:** Use dedicated etcd nodes with high-performance disks to isolate I/O.
+*   **Workload Impact:** Monitoring (Prometheus), logging (Loki), ingress controllers, and service meshes significantly increase resource requirements.
+*   **Validation:** Always perform capacity/load testing before production go-live.
 
 ---
 
-## Inventory Structure
+## Control Plane Endpoint (HA)
 
-Kubespray uses a standard Ansible inventory. It is recommended to keep your inventory files in a separate directory from the Kubespray source code.
+A production HA cluster requires a stable control plane endpoint in front of the Kubernetes API servers (port `6443`). This endpoint is used by kubelets and kubectl clients.
 
-### Lab Inventory Example (`inventory.ini`)
-
-```ini
-[all]
-node1 ansible_host=192.168.56.11 ip=192.168.56.11
-node2 ansible_host=192.168.56.12 ip=192.168.56.12
-node3 ansible_host=192.168.56.13 ip=192.168.56.13
-
-[kube_control_plane]
-node1
-
-[etcd]
-node1
-
-[kube_node]
-node2
-node3
-
-[k8s_cluster:children]
-kube_control_plane
-kube_node
-```
-
-### Production HA Example
-For high availability, use 3 nodes for the control plane and etcd roles, with dedicated worker nodes.
+Common implementation methods:
+*   **External TCP Load Balancer:** Cloud LB or F5.
+*   **HAProxy + Keepalived:** Standard for bare-metal/VM setups.
+*   **kube-vip:** Provides a virtual IP for the control plane.
 
 ---
 
-## Cluster Configuration
+## Inventory and Configuration
 
-Kubespray configuration is managed via `group_vars`. The two most important files are:
+Kubespray configuration is managed via an `inventory.ini` and `group_vars`.
 
-1.  `inventory/<cluster-name>/group_vars/all/all.yml` (Global settings)
-2.  `inventory/<cluster-name>/group_vars/k8s_cluster/k8s-cluster.yml` (Kubernetes specific)
+### Key Configuration Files
+*   `inventory/<cluster-name>/inventory.ini`: Defines host groups (kube_control_plane, kube_node, etcd).
+*   `inventory/<cluster-name>/group_vars/all/all.yml`: Global settings like proxy and cloud providers.
+*   `inventory/<cluster-name>/group_vars/k8s_cluster/k8s-cluster.yml`: Kubernetes specific settings (version, CNI, runtime).
 
-### Common Settings
+---
 
-```yaml
-# Use containerd as the runtime
-container_manager: containerd
+## Network Plugins (CNI)
 
-# Select CNI plugin
-kube_network_plugin: calico
+Choose a CNI based on your networking and security requirements.
 
-# Kube-proxy mode
-kube_proxy_mode: ipvs
+| CNI | Use Case |
+| :--- | :--- |
+| **Calico** | Common default, strong support for NetworkPolicy. |
+| **Cilium** | Advanced networking, eBPF-based, high performance, and observability. |
+| **Flannel** | Simple networking, suitable for basic lab environments. |
 
-# Cluster Name
-cluster_name: cluster.local
-```
+---
 
-> [!WARNING]
-> Pod CIDR and Service CIDR should be planned before cluster creation. Changing them later is a significant operational task that can cause network downtime.
+## Air-gapped and Restricted Environments
+
+In restricted enterprise environments, target nodes must have access to required packages and images.
+
+**Checklist:**
+*   [ ] Proxy configuration (if egress is via proxy).
+*   [ ] Private container registry (mirrored images).
+*   [ ] Internal OS package repositories (apt/yum mirrors).
+*   [ ] Firewall rules permitting node-to-node and node-to-LB traffic.
+*   [ ] Time synchronization (NTP/Chrony) with internal sources.
 
 ---
 
 ## Deploying the Cluster
 
-### 1. Validate Connectivity
-Ensure Ansible can communicate with all nodes and has sudo privileges.
-
+Ensure SSH connectivity first:
 ```bash
 ansible -i inventory/lab/inventory.ini all -m ping -b
 ```
 
-### 2. Execute Playbook
-Run the main cluster deployment playbook.
-
+Run the deployment:
 ```bash
 ansible-playbook -i inventory/lab/inventory.ini cluster.yml -b -v
-```
-
-If using a specific private key:
-```bash
-ansible-playbook -i inventory/lab/inventory.ini cluster.yml -b -v --private-key ~/.ssh/id_rsa
 ```
 
 ---
 
 ## Post-Deployment Validation
 
-Once the playbook finishes, verify the cluster state.
+### Health Checklist
+*   [ ] All nodes are in `Ready` state.
+*   [ ] All system pods are `Running` or `Completed`.
+*   [ ] CoreDNS is healthy.
+*   [ ] CNI pods are healthy.
 
-### Node and Pod Status
+### Validation Commands
 ```bash
-# Check node readiness
 kubectl get nodes -o wide
-
-# Check system component health
 kubectl get pods -A
-```
-
-### Network and DNS Test
-```bash
-# Run a DNS lookup test
+kubectl cluster-info
+kubectl top nodes
 kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup kubernetes.default
 ```
 
-### Test Workload
-```bash
-kubectl create deployment nginx-test --image=nginx
-kubectl expose deployment nginx-test --port=80 --type=ClusterIP
-kubectl get pods,svc
+---
 
-# Cleanup
-kubectl delete deployment nginx-test
-kubectl delete service nginx-test
-```
+## Post-Deployment Components
+
+Kubespray provides the foundation. A production platform usually requires:
+
+| Area | Example Components |
+| :--- | :--- |
+| **Ingress** | NGINX Ingress, HAProxy Ingress, Traefik |
+| **LoadBalancer** | MetalLB (for bare metal), kube-vip |
+| **Storage** | Longhorn, Rook/Ceph, CSI Drivers |
+| **Monitoring** | Prometheus, Grafana |
+| **Backup** | Velero |
+| **Certificates** | cert-manager |
 
 ---
 
 ## Scaling the Cluster
 
-To add a new worker node to an existing cluster:
-1.  Provision the new VM/hardware.
-2.  Ensure SSH access and sudo are configured.
-3.  Add the new node to the `[all]` and `[kube_node]` sections of your `inventory.ini`.
-4.  Run the scale playbook:
-
+To add a new node:
+1.  Provision the node and add it to `inventory.ini`.
+2.  Run the scale playbook:
 ```bash
-# Scale the cluster by adding new nodes defined in the inventory
 ansible-playbook -i inventory/lab/inventory.ini scale.yml -b -v
 ```
 
@@ -313,214 +277,114 @@ ansible-playbook -i inventory/lab/inventory.ini scale.yml -b -v
 
 ## Node Replacement
 
-If a node fails or needs to be replaced due to aging hardware:
-
-### 1. Graceful Removal
-If the node is still reachable, first drain it and remove it from the cluster:
-
-```bash
-# Drain the node of all workloads
-kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
-
-# Remove the node from the Kubernetes API
-kubectl delete node <node-name>
-
-# Use Kubespray to clean up the node and remove it from the configuration
-ansible-playbook -i inventory/lab/inventory.ini remove-node.yml -b -v -e "node=<node-name>"
-```
-
-### 2. Physical Replacement
-1.  Update your `inventory.ini` with the new node's details (keep the same name if preferred, or use a new one).
-2.  If the name changed, remove the old entry.
-
-### 3. Provision New Node
-Follow the **Scaling the Cluster** steps to add the new node back into the rotation:
-
-```bash
-ansible-playbook -i inventory/lab/inventory.ini scale.yml -b -v
-```
+1.  **Drain:** `kubectl drain <node> --ignore-daemonsets --delete-emptydir-data`
+2.  **Delete:** `kubectl delete node <node>`
+3.  **Cleanup:** `ansible-playbook -i inventory/lab/inventory.ini remove-node.yml -b -v -e "node=<node>"`
+4.  **Add:** Follow the [Scaling](#scaling-the-cluster) process.
 
 ---
 
 ## Node Provisioning & OS Baseline
 
-Before a node can be added to the inventory and processed by Kubespray, it must have a base OS installed and fundamental configurations applied.
-
-### 1. Provisioning Options
-*   **Virtualization Tools:** Use Terraform (vSphere/KVM), Packer (Golden Images), or Cloud-Init for initial VM creation and OS installation.
-*   **Bare Metal:** Use PXE/iPXE, MAAS (Metal as a Service), or manual ISO installation.
-
-### 2. OS Baseline via Ansible
-It is highly recommended to run a "Baseline" Ansible playbook on new nodes before Kubespray. This should ensure:
-*   **SSH:** Public keys are authorized; passwordless sudo is configured.
-*   **Python:** Python 3 is installed.
-*   **Network:** Static IP or DHCP reservation is set.
-*   **Disk:** Partitions (especially `/var/lib/docker` or `/var/lib/containerd`) are correctly sized.
-*   **Security:** Firewall is disabled or configured with [Kubernetes required ports](https://kubernetes.io/docs/reference/ports-and-protocols/).
+Before Kubespray, nodes should be prepared via an Ansible baseline playbook ensuring:
+*   Authorized SSH keys.
+*   Passwordless sudo.
+*   Python 3 installed.
+*   Kernel modules (br_netfilter, overlay) loaded.
+*   Required sysctl settings (`net.bridge.bridge-nf-call-iptables = 1`).
 
 ---
 
 ## Upgrading the Cluster
 
-Upgrades should be performed incrementally (e.g., 1.25.x to 1.26.x). 
-
-### 1. Preparation
-1.  Review [Kubespray Release Notes](https://github.com/kubernetes-sigs/kubespray/releases).
-2.  Update your local Kubespray repository to the desired version tag.
-3.  Backup critical data, especially the etcd database.
-
-### 2. Configure Target Version
-In `inventory/<cluster-name>/group_vars/k8s_cluster/k8s-cluster.yml`, update the version:
-
-```yaml
-kube_version: v1.26.3
-```
-
-### 3. Run Upgrade Playbook
-This playbook performs a rolling upgrade of all components (etcd, control plane, and workers).
+Upgrades must be incremental (e.g., 1.25.x -> 1.26.x).
 
 ```bash
-# Perform a rolling upgrade of the entire cluster
+# Update kube_version in group_vars first
 ansible-playbook -i inventory/lab/inventory.ini upgrade-cluster.yml -b -v
 ```
 
 > [!WARNING]
-> Kubernetes upgrades are operationally sensitive. Do not upgrade production clusters without a verified backup and a tested rollback/recovery strategy.
+> Do not upgrade production clusters without a verified backup and a tested rollback strategy.
 
 ---
 
-## Backup and Restore: etcd
+## Backup and Restore
 
-The etcd database stores the entire state of the Kubernetes cluster. Losing etcd means losing the cluster configuration.
-
-### 1. Automated Backup via Kubespray
-Kubespray includes a playbook to perform etcd snapshots:
+### etcd Snapshots
+A backup is not valid until a restore has been tested.
 
 ```bash
-# Run the etcd backup playbook
+# Automated Snapshot via Kubespray
 ansible-playbook -i inventory/lab/inventory.ini extra_playbooks/upgrade-cluster.yml --tags=etcd_snapshot
-```
 
-### 2. Manual Snapshot (etcdctl)
-Run this on an etcd node:
-
-```bash
-# Snapshot the current etcd state
-ETCDCTL_API=3 etcdctl \
+# Manual Snapshot (Example)
+ETCDCTL_API=3 etcdctl snapshot save /tmp/snapshot.db \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/ssl/etcd/ca.pem \
-  --cert=/etc/kubernetes/ssl/etcd/admin-node1.pem \
-  --key=/etc/kubernetes/ssl/etcd/admin-node1-key.pem \
-  snapshot save /tmp/etcd-snapshot.db
+  --cert=/etc/kubernetes/ssl/etcd/admin.pem \
+  --key=/etc/kubernetes/ssl/etcd/admin-key.pem
 ```
-
-### 3. Restore Strategy
-Restoring etcd is a high-risk operation that usually requires stopping all `kube-apiserver` instances.
-*   Use the `etcdctl snapshot restore` command.
-*   Update the etcd data directory on all control plane nodes.
-*   Restart the etcd and Kubernetes services.
 
 ---
 
-## General Kubernetes Backup
+## Security Hardening Checklist
 
-While etcd backups are for the "entire cluster," you should also backup application-level resources to ensure recovery if a version upgrade corrupts specific workloads.
-
-### 1. Resource Export
-As a baseline, export all namespace resources periodically:
-
-```bash
-# Export all resources in a namespace to YAML
-kubectl get all,configmaps,secrets,ingresses -n <namespace> -o yaml > namespace-backup.yaml
-```
-
-### 2. Velero (Recommended)
-For production clusters, use [Velero](https://velero.io/).
-*   **Purpose:** Backs up Kubernetes objects (API) and Persistent Volumes (CSI snapshots).
-*   **Upgrade Safety:** Before running `upgrade-cluster.yml`, perform a full Velero backup to an external S3-compatible store.
-*   **Recovery:** If the upgrade fails catastrophically, you can rebuild the cluster from scratch and use Velero to restore all namespaces and data.
-
----
-
-## Maintenance: Draining and Patching
-
-For routine maintenance like OS kernel updates or security patching:
-
-### 1. Drain the Node
-Prevent new pods from being scheduled and evict existing ones.
-
-```bash
-kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
-```
-
-### 2. Perform Maintenance
-Log into the node and perform your maintenance tasks:
-
-```bash
-ssh <node-ip>
-sudo apt update && sudo apt upgrade -y
-sudo reboot
-```
-
-### 3. Uncordon the Node
-Once the node is back online and verified, allow it to accept workloads again.
-
-```bash
-kubectl uncordon <node-name>
-```
+*   [ ] RBAC review (Least Privilege).
+*   [ ] Pod Security Admission (PSA) enabled.
+*   [ ] NetworkPolicies implemented between namespaces.
+*   [ ] Encryption at rest for Secrets.
+*   [ ] API Server access restricted by IP/VPN.
+*   [ ] CIS Benchmark validation (e.g., via `kube-bench`).
 
 ---
 
 ## Resetting the Cluster
 
-If you need to tear down the cluster entirely:
-
+> [!WARNING]
+> This command is destructive and removes all Kubernetes data.
 ```bash
 ansible-playbook -i inventory/lab/inventory.ini reset.yml -b -v
 ```
-
-> [!WARNING]
-> The reset command is destructive. It will remove all Kubernetes components and data from the nodes.
 
 ---
 
 ## Common Issues
 
-| Problem | Possible Cause | What to Check |
+| Problem | Possible Cause | Suggested Check |
 | :--- | :--- | :--- |
-| Ansible cannot connect | SSH issue, wrong key, wrong user | SSH config, inventory, firewall rules |
-| Preflight failures | Missing packages, sysctl settings | OS requirements, kernel modules |
-| Image pull timeout | No internet or registry access | Proxy settings, firewall, registry mirrors |
-| Pods stuck Pending | No resources or broken CNI | Node capacity, CNI logs, kubectl events |
-| Node NotReady | Kubelet or CNI initialization failure | Kubelet logs, CNI pods |
-| API Unreachable | Load balancer or cert issue | API server logs, firewall, cert expiry |
+| **Node NotReady** | CNI issue or Kubelet failure | Check `journalctl -u kubelet` and CNI pod logs |
+| **Pods Pending** | No resources or missing storage | Check `kubectl describe pod` and events |
+| **DNS Failure** | CoreDNS or CNI config issue | Check CoreDNS logs and service IPs |
+| **Image Pull Error** | Registry access or missing image | Check registry connectivity and image names |
+| **API Unavailable** | LB issue or control plane failure | Check port 6443 and control plane health |
 
 ---
 
 ## Best Practices
 
-*   **Version Pinning:** Always pin your Kubespray version to a specific git tag or release.
-*   **Infrastructure as Code:** Keep your inventory and custom `group_vars` in version control.
-*   **Stable IPs:** Use static IPs for all nodes to prevent cluster breakage after reboot.
-*   **Dedicated etcd:** For production, consider dedicated nodes for etcd to isolate disk I/O.
-*   **Monitoring:** Deploy Prometheus/Grafana immediately after validation.
-*   **Staging Validation:** Test all upgrades and configuration changes in a lab/staging cluster first.
+*   **Pin Releases:** Never use `master` for production.
+*   **Test in Lab:** Always validate changes in a non-prod environment.
+*   **GitOps:** Store inventories and configurations in Git.
+*   **Monitor Expiry:** Track certificate expiration dates.
+*   **Immutable Nodes:** Avoid manual configuration changes on nodes.
 
 ---
 
 ## Definition of Done
 
-A Kubespray deployment is considered complete when:
-*   [ ] All nodes are in the `Ready` state.
-*   [ ] All `kube-system` pods are `Running`.
+A Kubespray deployment is complete when:
+*   [ ] All nodes are `Ready`.
+*   [ ] System pods are `Running`.
+*   [ ] API is reachable through the HA endpoint.
 *   [ ] Internal DNS resolution is verified.
-*   [ ] Pod-to-Pod and Pod-to-Service networking is functional.
-*   [ ] `kubectl` access is configured for the management team.
-*   [ ] Backup and restore procedures for etcd are documented and tested.
-*   [ ] Operational ownership and support model are clearly defined.
+*   [ ] CNI networking is functional.
+*   [ ] etcd backup is configured and tested.
+*   [ ] Monitoring/Logging requirements are documented.
+*   [ ] Inventory is committed to Git.
 
 ---
 
 ## Summary
 
-Kubespray provides a powerful and flexible way to manage Kubernetes clusters outside of public cloud environments. While it offers deep control, it also requires a commitment to infrastructure management and regular maintenance. By following this runbook, teams can ensure a consistent and reliable deployment lifecycle.
+Kubespray provides a flexible foundation for self-managed Kubernetes. Success depends on version pinning, proper HA planning, and a consistent operational strategy for upgrades and backups.
