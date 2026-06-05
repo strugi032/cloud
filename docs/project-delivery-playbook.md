@@ -501,5 +501,9 @@ The project is done when:
 
 Use the following simplified project flow as a high-level reference:
 
-![Project Flow](./assets/flow.png)
+```text
+┌─────────┐     ┌──────────────┐     ┌──────────┐     ┌────────────────┐     ┌────────────┐     ┌─────────┐     ┌──────────┐
+│ Kickoff │ ──> │ Requirements │ ──> │ Planning │ ──> │ Implementation │ ──> │ Validation │ ──> │ Release │ ──> │ Handover │
+└─────────┘     └──────────────┘     └──────────┘     └────────────────┘     └────────────┘     └─────────┘     └──────────┘
+```
 
