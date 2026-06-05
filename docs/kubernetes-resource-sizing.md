@@ -24,10 +24,10 @@ Goldilocks is an open-source tool that creates Vertical Pod Autoscaler (VPA) obj
 
 ## Resource Fundamentals
 
-| Concept  | Purpose                             | Over-provisioned                             | Under-provisioned                             |
-| -------- | ----------------------------------- | -------------------------------------------- | --------------------------------------------- |
-| Requests | Scheduling and resource reservation | Wasted cost / unused capacity                | Resource contention and unstable performance  |
-| Limits   | Hard resource ceiling               | Can cause inefficient allocation if too high | OOMKilled for memory / CPU throttling for CPU |
+| Concept | Purpose | Over-provisioned | Under-provisioned |
+| :--- | :--- | :--- | :--- |
+| Requests | Scheduling and resource reservation | Wasted cost / unused capacity | Resource contention and unstable performance |
+| Limits | Hard resource ceiling | Can cause inefficient allocation if too high | OOMKilled for memory / CPU throttling for CPU |
 
 ---
 
@@ -63,7 +63,7 @@ helm install goldilocks fairwinds-stable/goldilocks --namespace goldilocks --cre
 Analysis is "opt-in" per namespace. This ensures you only track relevant workloads and avoid unnecessary overhead on system components.
 
 ```bash
-kubectl label ns <target-namespace> goldilocks.fairwinds.com/enabled=true
+kubectl label ns <namespace> goldilocks.fairwinds.com/enabled=true
 ```
 
 > [!NOTE]
@@ -121,6 +121,20 @@ As a general rule of thumb, add a ~20% safety margin to the "Maximum Observed" r
 6.  Apply changes through a pull request.
 7.  Deploy gradually (canary or blue/green).
 8.  Monitor latency, restarts, CPU throttling, memory usage, and node pressure.
+
+---
+
+## After Applying Resource Changes
+
+Monitor:
+- Pod restarts
+- `OOMKilled` events
+- CPU throttling
+- Memory usage
+- Latency
+- Error rate
+- Node pressure
+- HPA behavior
 
 ---
 

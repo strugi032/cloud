@@ -2,43 +2,44 @@
 
 This document tracks and manages risks associated with cloud or platform migration projects.
 
-## Purpose
-
-To proactively identify, assess, and mitigate risks that could impact the timeline, cost, or success of a migration initiative.
-
 ## How to use this Register
 
 1.  **Identify:** List any event that could negatively impact the project.
 2.  **Assess:** Rate the Impact and Probability.
 3.  **Mitigate:** Define clear actions to reduce the risk.
-4.  **Track:** Update the status regularly during project standups.
+4.  **Track:** Update the status regularly during standups.
 
-## Definitions
+## Impact & Probability Definitions
 
 ### Impact Levels
-- **High:** Critical path blocked; production outage; significant data loss.
-- **Medium:** Significant delay; high work-around effort; partial impact.
-- **Low:** Minimal delay; easy workaround; minor impact.
+*   **High:** Critical path blocked; production outage.
+*   **Medium:** Significant delay; high work-around effort.
+*   **Low:** Minimal delay; minor impact.
 
 ### Probability Levels
-- **High:** Likely to occur.
-- **Medium:** Possible, but not certain.
-- **Low:** Unlikely to occur.
+*   **High:** Likely to occur.
+*   **Medium:** Possible.
+*   **Low:** Unlikely.
+
+### Status Values
+*   **Open:** Risk identified, no mitigation yet.
+*   **Mitigating:** Mitigation plan in progress.
+*   **Accepted:** Risk acknowledged, no further action planned.
+*   **Closed:** Risk no longer applicable or successfully mitigated.
+
+---
 
 ## Risk Register
 
-| Risk | Impact | Probability | Owner | Mitigation | Status |
-|---|---|---|---|---|---|
-| Missing dependency | High | Medium | Application Team | Run comprehensive discovery/mapping before migration | Open |
-| DNS issue | High | Low | Platform Team | Lower TTLs 48h before cutover; test DNS locally | Open |
-| Missing rollback plan | High | Medium | Tech Lead | Define and test rollback steps before release window | Open |
-| IAM / Permission gap | Medium | High | Cloud Engineer | Use IaC to pre-provision roles; test in Staging | Open |
-| Network connectivity | High | Medium | Networking Team | Validate VPN/DirectConnect throughput and latency | Open |
-| Secret management gap | High | Low | Security Team | Audit all hardcoded secrets; migrate to Vault/Secret Manager | Open |
-| Database sync delay | High | Medium | DBA Team | Perform mock data migrations; monitor replication lag | Open |
-| Observability gap | Medium | Medium | SRE Team | Ensure logging and metrics are functional before traffic switch | Open |
-| Unclear ownership | Medium | High | Project Manager | Assign explicit owners for every phase in the kickoff | Open |
-| Scope creep | Medium | Medium | Tech Lead | Strictly define MVP and "In-Scope" during planning | Open |
+| Risk Category | Risk Description | Impact | Probability | Owner | Mitigation | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Networking** | Connectivity loss between legacy and cloud | High | Medium | Networking Team | Validate VPN/DirectConnect throughput | Open |
+| **DNS** | DNS propagation delay during cutover | High | Low | Platform Team | Lower TTLs 48h before cutover | Mitigating |
+| **IAM** | Missing permissions for migrated services | Medium | High | Cloud Engineer | Use IaC to pre-provision roles | Open |
+| **Data** | Database sync lag or data corruption | High | Medium | DBA Team | Perform mock data migrations | Open |
+| **Observability** | Incomplete logging in new environment | Medium | Medium | SRE Team | Validate logs before traffic switch | Open |
+| **Ownership** | Unclear support model post-migration | Medium | High | Project Manager | Assign explicit owners in kickoff | Open |
+| **Cutover** | Rollback plan is untested | High | Medium | Tech Lead | Define and test rollback steps | Open |
 
 > [!IMPORTANT]
-> A risk register is only useful if it is updated. Review these risks at the start of every phase and after any significant architectural change.
+> A risk register is only useful if it is updated. Review these risks at the start of every phase.

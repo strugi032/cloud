@@ -67,11 +67,12 @@ This checklist provides a structured approach for migrating workloads into or be
 - [ ] Execute DNS switch or Load Balancer cutover.
 - [ ] Monitor logs and metrics intensely for the first 60 minutes.
 
-## 9. Post-Migration
+## 9. Post-Migration Cleanup
 
 - [ ] Hand over operational documentation to SRE/Ops.
 - [ ] Update internal service registry.
 - [ ] Decommission old infrastructure after soak period.
+- [ ] Remove temporary migration tools/access.
 
 > [!WARNING]
 > Do not delete the old environment until the migrated workload is validated, monitored, and approved by the owning team. Ensure all data integrity checks are passed before shutting down legacy systems.

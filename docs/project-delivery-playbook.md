@@ -10,7 +10,7 @@
 * [Planning](#planning)
 * [Scrum Delivery](#scrum-delivery)
 * [Weekly Tracking](#weekly-tracking)
-* [Decision Log](#decision-log)
+* [Decision Log (ADR)](#decision-log-adr)
 * [Risks and Blockers](#risks-and-blockers)
 * [Validation](#validation)
 * [Definition of Done](#definition-of-done)
@@ -24,14 +24,14 @@ This document describes how a senior engineer can lead the kickoff, alignment, p
 
 It can be used for:
 
-* greenfield cloud projects
-* cloud migrations
-* Kubernetes projects
-* CI/CD implementation
-* platform engineering work
-* infrastructure automation
-* application onboarding
-* observability or security improvements
+*   Greenfield cloud projects
+*   Cloud migrations
+*   Kubernetes projects
+*   CI/CD implementation
+*   Platform engineering work
+*   Infrastructure automation
+*   Application onboarding
+*   Observability or security improvements
 
 > [!NOTE]
 > The goal is not to create bureaucracy.
@@ -43,14 +43,14 @@ It can be used for:
 
 Before implementation starts, the team should understand:
 
-* what is being built or changed
-* why it is needed
-* who owns each part
-* what is in scope
-* what is out of scope
-* what the requirements are
-* how progress will be tracked
-* how success will be validated
+*   What is being built or changed
+*   Why it is needed
+*   Who owns each part
+*   What is in scope
+*   What is out of scope
+*   What the requirements are
+*   How progress will be tracked
+*   How success will be validated
 
 > [!IMPORTANT]
 > A senior engineer should not only implement the technical solution.
@@ -60,22 +60,20 @@ Before implementation starts, the team should understand:
 
 ## Teams Involved
 
-Not every project needs every team.
+Not every project needs every team. The senior engineer should identify which teams are required and what each team owns.
 
-The senior engineer should identify which teams are required and what each team owns.
-
-| Team               | Responsibility                                                           |
-| ------------------ | ------------------------------------------------------------------------ |
-| Product / Business | Goal, priority, deadline, expected outcome                               |
-| Developers         | Application behavior, code changes, configuration, functional validation |
-| Platform / DevOps  | Infrastructure, cloud, Kubernetes, CI/CD, automation                     |
-| SRE / Operations   | Reliability, monitoring, alerting, runbooks, support readiness           |
-| QA                 | Test strategy, smoke tests, regression testing, validation               |
-| Security           | RBAC, secrets, compliance, network exposure, approval                    |
-| Networking         | DNS, ingress, certificates, routing, firewall rules                      |
-| DBA / Data Team    | Databases, backups, restore, data migration, data integrity              |
-| FinOps / Finance   | Cloud cost tracking, budgeting, forecasting                              |
-| Legal / Compliance | Data privacy, GDPR, SOC2, regulatory sign-off                            |
+| Team | Responsibility |
+| :--- | :--- |
+| Product / Business | Goal, priority, deadline, expected outcome |
+| Developers | Application behavior, code changes, configuration, functional validation |
+| Platform / DevOps | Infrastructure, cloud, Kubernetes, CI/CD, automation |
+| SRE / Operations | Reliability, monitoring, alerting, runbooks, support readiness |
+| QA | Test strategy, smoke tests, regression testing, validation |
+| Security | RBAC, secrets, compliance, network exposure, approval |
+| Networking | DNS, ingress, certificates, routing, firewall rules |
+| DBA / Data Team | Databases, backups, restore, data migration, data integrity |
+| FinOps / Finance | Cloud cost tracking, budgeting, forecasting |
+| Legal / Compliance | Data privacy, GDPR, SOC2, regulatory sign-off |
 
 > [!WARNING]
 > Do not assume ownership.
@@ -85,36 +83,34 @@ The senior engineer should identify which teams are required and what each team 
 
 ## Project Kickoff
 
-The first step is a kickoff discussion.
-
-The goal is to create a shared understanding before implementation starts.
+The first step is a kickoff discussion. The goal is to create a shared understanding before implementation starts.
 
 ### Kickoff Questions
 
-* What problem are we solving?
-* Why are we doing this now?
-* Who requested this?
-* Who will use the solution?
-* Who will maintain it later?
-* What is in scope?
-* What is out of scope?
-* What is the expected impact on cloud costs (FinOps)?
-* What are the known risks?
-* What are the dependencies?
-* How do we know this is done?
+*   What problem are we solving?
+*   Why are we doing this now?
+*   Who requested this?
+*   Who will use the solution?
+*   Who will maintain it later?
+*   What is in scope?
+*   What is out of scope?
+*   What is the expected impact on cloud costs (FinOps)?
+*   What are the known risks?
+*   What are the dependencies?
+*   How do we know this is done?
 
 ### Kickoff Output
 
 After kickoff, the team should have:
 
-* project goal
-* list of stakeholders
-* initial scope
-* known risks
-* known dependencies
-* tracking board
-* communication channel
-* next steps
+*   Project goal
+*   List of stakeholders
+*   Initial scope
+*   Known risks
+*   Known dependencies
+*   Tracking board
+*   Communication channel
+*   Next steps
 
 > [!NOTE]
 > The kickoff does not need to solve every technical detail.
@@ -144,34 +140,27 @@ The platform must use RBAC, store secrets outside of Git, restrict production ac
 ## Requirement: <name>
 
 ### Description
-
 What is needed and why.
 
 ### Non-Functional Requirements (NFRs)
-
 Define Performance, Scalability, and Reliability (SLIs/SLOs) targets.
-```
-### Owner
 
+### Owner
 Team or person responsible.
 
 ### Priority
-
 Must have / Should have / Nice to have
 
 ### Acceptance Criteria
-
 - Condition 1
 - Condition 2
 - Condition 3
 
 ### Dependencies
-
 - Dependency 1
 - Dependency 2
 
 ### Notes
-
 Open questions or additional context.
 ```
 
@@ -185,7 +174,6 @@ Open questions or additional context.
 After requirements are collected, the work should be split into phases.
 
 Example phases:
-
 1. Discovery
 2. Design
 3. Implementation
@@ -194,43 +182,25 @@ Example phases:
 6. Handover
 7. Cleanup
 
-Each phase should have:
+### Example Phase: Design
 
-* owner
-* expected output
-* related tickets
-* dependencies
-* acceptance criteria
+**Goal:** Create and review the target technical design.
 
-### Example Phase
+**Owner:** Senior Engineer / Tech Lead
 
-```markdown
-## Phase: Design
+**Output:**
+*   Architecture document
+*   Cost estimate (initial FinOps review)
+*   SLIs/SLOs defined
+*   Deployment pipeline strategy (environments, branching)
+*   Open questions
+*   Risk list
+*   Implementation plan
 
-### Goal
-
-Create and review the target technical design.
-
-### Owner
-
-Senior Engineer / Tech Lead
-
-### Output
-
-- architecture document
-- cost estimate (initial FinOps review)
-- SLIs/SLOs defined
-- deployment pipeline strategy (environments, branching)
-- open questions
-- risk list
-- implementation plan
-
-### Done When
-
-- design is reviewed
-- major risks are known
-- required teams agree with the approach
-```
+**Done When:**
+*   Design is reviewed
+*   Major risks are known
+*   Required teams agree with the approach
 
 > [!WARNING]
 > Do not start implementation only from verbal agreement.
@@ -242,38 +212,31 @@ Senior Engineer / Tech Lead
 
 Scrum can be used to keep delivery structured and visible.
 
-The goal is not to create unnecessary meetings.
-The goal is to make progress, blockers, and ownership clear.
-
 ### Backlog Refinement
 
-Used to clarify upcoming work.
+Used to clarify upcoming work. Each task should answer:
 
-Each task should answer:
-
-* what needs to be done
-* why it is needed
-* who owns it
-* what the acceptance criteria are
-* whether there are dependencies
-* whether the task is small enough
+*   What needs to be done
+*   Why it is needed
+*   Who owns it
+*   What the acceptance criteria are
+*   Whether there are dependencies
+*   Whether the task is small enough
 
 > [!TIP]
 > Use timeboxed **Spikes** for research or discovery when the implementation path is unclear.
 
 ### Sprint Planning
 
-Used to decide what will be delivered next.
+Used to decide what will be delivered next. Sprint planning should confirm:
 
-Sprint planning should confirm:
-
-* sprint goal
-* selected tasks
-* task owners
-* priorities
-* dependencies
-* blockers
-* validation work
+*   Sprint goal
+*   Selected tasks
+*   Task owners
+*   Priorities
+*   Dependencies
+*   Blockers
+*   Validation work
 
 ### Standup or Async Update
 
@@ -289,28 +252,11 @@ Do I need help from another team?
 > [!NOTE]
 > For experienced teams, async updates can replace daily standups if progress and blockers are visible.
 
-### Sprint Review
-
-Used to show completed work and collect feedback.
-
-Focus on working output, not activity.
-
-### Retrospective
-
-Used to improve the process.
-
-Focus on:
-
-* what slowed the team down
-* what was unclear
-* what should change next time
-* which risks were missed
-
 ---
 
 ## Weekly Tracking
 
-For multi-team projects, the senior engineer should send a short weekly status update.
+The senior engineer should send a short weekly status update for visibility.
 
 ### Weekly Status Template
 
@@ -318,51 +264,43 @@ For multi-team projects, the senior engineer should send a short weekly status u
 # Weekly Project Status
 
 ## Overall Status
-
 Green / Yellow / Red
 
 ## Completed
-
 - Item 1
 - Item 2
 
 ## In Progress
-
 - Item 1
 - Item 2
 
 ## Blocked
-
 - Blocker 1
 - Blocker 2
 
 ## Risks
-
 - Risk 1
 - Risk 2
 
 ## Decisions Needed
-
 - Decision 1
 - Decision 2
 
 ## Next Steps
-
 - Step 1
 - Step 2
 ```
 
 ### Status Meaning
 
-| Status | Meaning                                                      |
-| ------ | ------------------------------------------------------------ |
-| Green  | Project is on track                                          |
+| Status | Meaning |
+| :--- | :--- |
+| Green | Project is on track |
 | Yellow | There are risks or blockers, but delivery is still realistic |
-| Red    | Delivery is blocked or timeline/scope is at serious risk     |
+| Red | Delivery is blocked or timeline/scope is at serious risk |
 
 > [!IMPORTANT]
-> Weekly tracking should be factual.
-> Avoid long status updates that hide the real problem.
+> Weekly tracking should be factual. Avoid long status updates that hide the real problem.
 
 ---
 
@@ -370,16 +308,12 @@ Green / Yellow / Red
 
 Important decisions should be written down as Architecture Decision Records (ADRs).
 
-Examples:
-
-* cloud provider choice
-* deployment strategy
-* migration approach
-* rollback strategy
-* security model
-* networking approach
-* CI/CD design
-* database migration approach
+**Examples:**
+*   Cloud provider choice
+*   Deployment strategy
+*   Migration approach
+*   Rollback strategy
+*   Security model
 
 ### Decision Template
 
@@ -387,29 +321,22 @@ Examples:
 # Decision: <short title>
 
 ## Context
-
 Why this decision was needed.
 
 ## Options
-
 1. Option A
 2. Option B
-3. Option C
 
 ## Decision
-
 What was decided.
 
 ## Reason
-
 Why this option was selected.
 
 ## Impact
-
 What this changes.
 
 ## Owner
-
 Who owns this decision.
 ```
 
@@ -420,32 +347,13 @@ Who owns this decision.
 
 ## Risks and Blockers
 
-A risk is something that might become a problem.
-
-A blocker is something that is already stopping progress.
-
 ### Risk and Blocker Template
 
-
 | Item | Type | Impact | Owner | Mitigation / Next Step | Status |
-|---|---|---|---|---|---|
+| :--- | :--- | :--- | :--- | :--- | :--- |
 | Missing production access | Blocker | High | Platform | Request access from cloud team | Open |
 | Unknown database dependency | Risk | High | Developers | Confirm with application owner | Open |
 | Missing rollback plan | Risk | High | Senior Engineer | Define before production release | Open |
-
-
-Common risks:
-
-* unclear ownership
-* missing requirement
-* missing access
-* hidden dependency
-* unclear production process
-* missing monitoring
-* missing rollback
-* incomplete testing
-* missing security approval
-* scope creep
 
 > [!IMPORTANT]
 > Risks should be visible before they become incidents.
@@ -454,40 +362,27 @@ Common risks:
 
 ## Validation
 
-Implementation alone does not mean the project is done.
-
-A project is done when it is implemented, validated, documented, and owned.
-
 ### Technical Validation
-
-* infrastructure is created
-* deployment works
-* required services are reachable
-* authentication works
-* authorization works
-* secrets are handled correctly
-* **Security:** Security scans (SAST/DAST) and compliance audits are completed
-* **FinOps:** Resource tagging, budget alerts, and cost tracking are active
-* logs are available
-* metrics are available
-* alerts are configured
+*   Infrastructure is created
+*   Deployment works
+*   Required services are reachable
+*   Authentication and Authorization work
+*   Secrets are handled correctly
+*   **Security:** Security scans (SAST/DAST) and compliance audits are completed
+*   **FinOps:** Resource tagging, budget alerts, and cost tracking are active
+*   Logs, metrics, and alerts are configured
 
 ### Functional Validation
-
-* main user flow works
-* application team confirms expected behavior
-* **Compliance:** Data privacy (GDPR/SOC2) and regulatory sign-offs are obtained
-* QA validates required flows
-* external integrations work
-* no critical errors are visible
+*   Main user flow works
+*   Application team confirms expected behavior
+*   **Compliance:** Data privacy (GDPR/SOC2) sign-offs are obtained
+*   QA validates required flows
 
 ### Operational Validation
-
-* runbook exists
-* dashboards are linked
-* alerts have owners
-* support model is clear
-* on-call impact is understood
+*   Runbook exists
+*   Dashboards are linked
+*   Alerts have owners
+*   Support model is clear
 
 > [!WARNING]
 > Do not mark a project as done only because the implementation was merged.
@@ -497,29 +392,19 @@ A project is done when it is implemented, validated, documented, and owned.
 ## Definition of Done
 
 The project is done when:
-
-* requirements are implemented
-* acceptance criteria are met
-* validation is completed
-* documentation is updated
-* monitoring is available
-* ownership is clear
-* risks are closed or accepted
-* stakeholders approve the result
-
-> [!NOTE]
-> Good delivery is not only about building the solution.
-> It is about making sure the solution is understood, accepted, supportable, and safe to operate.
+*   Requirements are implemented
+*   Acceptance criteria are met
+*   Validation is completed
+*   Documentation is updated
+*   Monitoring is available
+*   Ownership is clear
+*   Risks are closed or accepted
+*   Stakeholders approve the result
 
 ---
 
 ## Project Flow
 
-Use the following simplified project flow as a high-level reference:
-
 ```text
-┌─────────┐     ┌──────────────┐     ┌──────────┐     ┌────────────────┐     ┌────────────┐     ┌─────────┐     ┌──────────┐
-│ Kickoff │ ──> │ Requirements │ ──> │ Planning │ ──> │ Implementation │ ──> │ Validation │ ──> │ Release │ ──> │ Handover │
-└─────────┘     └──────────────┘     └──────────┘     └────────────────┘     └────────────┘     └─────────┘     └──────────┘
+Kickoff -> Requirements -> Planning -> Implementation -> Validation -> Release -> Handover
 ```
-

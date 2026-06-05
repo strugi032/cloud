@@ -4,13 +4,15 @@ This repository contains practical DevOps and Platform Engineering documentation
 
 ## Purpose
 
-The goal of this playbook is to provide senior engineers with a standardized set of tools and processes for managing Kubernetes, CI/CD, cloud infrastructure, observability, and production reliability. These templates are intended to be adapted to your specific environment and organizational needs.
+The goal of this playbook is to provide senior engineers with a standardized set of tools and processes for managing Kubernetes, CI/CD, cloud infrastructure, observability, and production reliability. 
+
+These templates are intended to be adapted to your specific environment and organizational needs.
 
 ## Document Index
 
 | Document | Purpose |
-|---|---|
-| [Project Kickoff Playbook](./docs/project-delivery-playbook.md) | Defines how to start, align, plan, and track engineering projects |
+| :--- | :--- |
+| [Project Delivery Playbook](./docs/project-delivery-playbook.md) | Defines how to start, align, plan, and track engineering projects |
 | [Kubernetes Workload Sizing](./docs/kubernetes-resource-sizing.md) | Guide for optimizing Kubernetes resource requests and limits using Goldilocks |
 | [Kubernetes Migration Checklist](./docs/kubernetes-migration-checklist.md) | Checklist for migrating workloads to or between Kubernetes clusters |
 | [Production Readiness Checklist](./docs/production-readiness-checklist.md) | Validates whether a service is ready for production |
@@ -22,11 +24,19 @@ The goal of this playbook is to provide senior engineers with a standardized set
 
 ## Recommended Reading Order
 
-1.  **Project Kickoff:** Start here if you are beginning a new initiative.
-2.  **Architecture & Design:** Use the ADR Template to document key decisions.
-3.  **CI/CD & Standards:** Establish your delivery pipeline.
-4.  **Production Readiness:** Use this before any major production release.
-5.  **Incident Response:** Ensure you have the tools to handle issues once live.
+1.  **Project Kickoff:** Start with the [Project Delivery Playbook](./docs/project-delivery-playbook.md) if you are beginning a new initiative.
+2.  **Architecture & Design:** Use the [ADR Template](./docs/adr-template.md) to document key decisions.
+3.  **CI/CD & Standards:** Establish your [Delivery Pipeline Standards](./docs/ci-cd-standards.md).
+4.  **Production Readiness:** Use the [Readiness Checklist](./docs/production-readiness-checklist.md) before any major production release.
+5.  **Incident Response:** Ensure you have the tools to handle issues once live with the [Incident Runbook](./docs/incident-response-runbook.md).
+
+## How to Use This Repository
+
+These documents are designed as **live templates**. 
+
+*   **Fork/Clone:** Take what you need and store it in your own internal documentation repository.
+*   **Adapt:** Replace placeholders (e.g., `<namespace>`, `<Service Name>`) with actual values.
+*   **Automate:** Wherever possible, turn these checklists into automated CI/CD gates or monitoring alerts.
 
 ## Repository Structure
 
@@ -34,15 +44,15 @@ The goal of this playbook is to provide senior engineers with a standardized set
 .
 ├── README.md
 └── docs/
-    ├── project-delivery-playbook.md      # Project kickoff and lifecycle
-    ├── kubernetes-resource-sizing.md      # Workload optimization
-    ├── kubernetes-migration-checklist.md # Migration planning
-    ├── production-readiness-checklist.md  # Go-live validation
-    ├── incident-response-runbook.md      # Ops & On-call
-    ├── cloud-migration-risk-register.md  # Risk management
+    ├── adr-template.md                   # Decision records
     ├── ci-cd-standards.md                # Delivery standards
+    ├── cloud-migration-risk-register.md  # Risk management
+    ├── incident-response-runbook.md      # Ops & On-call
+    ├── kubernetes-migration-checklist.md # Migration planning
+    ├── kubernetes-resource-sizing.md      # Workload optimization
     ├── observability-checklist.md        # Monitoring & Reliability
-    └── adr-template.md                   # Decision records
+    ├── production-readiness-checklist.md  # Go-live validation
+    └── project-delivery-playbook.md      # Project kickoff and lifecycle
 ```
 
 > [!WARNING]
