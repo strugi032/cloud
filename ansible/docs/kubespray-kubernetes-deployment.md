@@ -8,9 +8,7 @@
 *   [Repository Structure](#repository-structure)
 *   [High-Level Flow](#high-level-flow)
 *   [Prerequisites](#prerequisites)
-*   [Node Requirements](#node-requirements)
-*   [Production Sizing & Hardware Specs](#production-sizing--hardware-specs)
-*   [Sizing Factors & Disclaimer](#sizing-factors--disclaimer)
+*   [Node Sizing and Requirements](#node-sizing-and-requirements)
 *   [Inventory Structure](#inventory-structure)
 *   [Cluster Configuration](#cluster-configuration)
 *   [Deploying the Cluster](#deploying-the-cluster)
@@ -148,20 +146,38 @@ pip install -r requirements.txt
 
 ---
 
-## Node Requirements
+## Node Sizing and Requirements
 
-All target nodes must meet the following minimum criteria:
+All target nodes must meet baseline criteria for a stable cluster. The following recommendations are baseline starting points and should be adjusted based on real-world load.
 
-*   **OS:** Supported Linux distribution (Ubuntu, Debian, RHEL, CentOS, etc.).
-*   **Networking:** Stable IP addresses; network connectivity between all nodes.
-*   **Time Sync:** NTP or chrony must be active and synchronized.
-*   **Resources:** Sufficient CPU and Memory as outlined below.
+### 1. Hardware Requirements Table
 
-| Role | CPU | Memory | Disk |
-| :--- | :--- | :--- | :--- |
-| Control Plane | 2 vCPU | 4 GB | 40 GB |
-| Worker | 2 vCPU | 4 GB | 40 GB |
-| Combined (Master+Worker) | 4 vCPU | 8 GB | 60 GB |
+| Environment | Node Role | Node Count | CPU per Node | RAM per Node | Disk per Node | Notes |
+| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **Test/Lab** | Combined control-plane + worker | 1-3 | 2-4 vCPU | 4-8 GB | 40-80 GB | Suitable for learning, testing Kubespray, validating configs |
+| **Test/Lab** | Worker | 1-2 | 2-4 vCPU | 4-8 GB | 40-80 GB | Optional, useful if testing scheduling and node separation |
+| **Production** | Control Plane | 3 | 4 vCPU | 8-16 GB | 80-120 GB | Required for HA control plane |
+| **Production** | Worker | 3+ | 4-8 vCPU | 16-32 GB | 100+ GB | Scale based on application workloads |
+| **Production** | Dedicated etcd | 3 | 2-4 vCPU | 8-16 GB | 80-120 GB fast disk | Optional but recommended for larger or stricter HA setups |
+
+### 2. Sizing Considerations
+*   **etcd Placement:** For small production clusters, control-plane nodes can also run etcd. For larger or more critical environments, use dedicated etcd nodes to isolate I/O.
+*   **Workload-Based Sizing:** Worker node sizing should be based on real workload resource requests, limits, and expected traffic.
+*   **System Overhead:** Monitoring, logging, ingress controllers, service mesh, and storage systems (e.g., Ceph) can significantly increase resource requirements.
+*   **Validation:** Always validate sizing with capacity testing before production go-live.
+
+### 3. Sizing Factors & Disclaimer
+
+> [!WARNING]
+> **Disclaimer:** These specifications are general guidelines. There is no "one size fits all" configuration for Kubernetes.
+
+Proper sizing depends on:
+*   Number of workloads (Pods)
+*   Resource requests and limits
+*   Expected network traffic and throughput
+*   Storage performance needs (IOPS)
+*   Monitoring and logging stack requirements
+*   High Availability (HA) and disaster recovery goals
 
 ---
 
@@ -448,67 +464,6 @@ sudo reboot
 
 ### 3. Uncordon the Node
 Once the node is back online and verified, allow it to accept workloads again.
-
-```bash
-kubectl uncordon <node-name>
-```
-
----
-
-## Resetting the Cluster
-
-If you need to tear down the cluster entirely:
-
-```bash
-ansible-playbook -i inventory/lab/inventory.ini reset.yml -b -v
-```
-
-> [!WARNING]
-> The reset command is destructive. It will remove all Kubernetes components and data from the nodes.
-
----
-
-## Common Issues
-
-| Problem | Possible Cause | What to Check |
-| :--- | :--- | :--- |
-| Ansible cannot connect | SSH issue, wrong key, wrong user | SSH config, inventory, firewall rules |
-| Preflight failures | Missing packages, sysctl settings | OS requirements, kernel modules |
-| Image pull timeout | No internet or registry access | Proxy settings, firewall, registry mirrors |
-| Pods stuck Pending | No resources or broken CNI | Node capacity, CNI logs, kubectl events |
-| Node NotReady | Kubelet or CNI initialization failure | Kubelet logs, CNI pods |
-| API Unreachable | Load balancer or cert issue | API server logs, firewall, cert expiry |
-
----
-
-## Best Practices
-
-*   **Version Pinning:** Always pin your Kubespray version to a specific git tag or release.
-*   **Infrastructure as Code:** Keep your inventory and custom `group_vars` in version control.
-*   **Stable IPs:** Use static IPs for all nodes to prevent cluster breakage after reboot.
-*   **Dedicated etcd:** For production, consider dedicated nodes for etcd to isolate disk I/O.
-*   **Monitoring:** Deploy Prometheus/Grafana immediately after validation.
-*   **Staging Validation:** Test all upgrades and configuration changes in a lab/staging cluster first.
-
----
-
-## Definition of Done
-
-A Kubespray deployment is considered complete when:
-*   [ ] All nodes are in the `Ready` state.
-*   [ ] All `kube-system` pods are `Running`.
-*   [ ] Internal DNS resolution is verified.
-*   [ ] Pod-to-Pod and Pod-to-Service networking is functional.
-*   [ ] `kubectl` access is configured for the management team.
-*   [ ] Backup and restore procedures for etcd are documented and tested.
-*   [ ] Operational ownership and support model are clearly defined.
-
----
-
-## Summary
-
-Kubespray provides a powerful and flexible way to manage Kubernetes clusters outside of public cloud environments. While it offers deep control, it also requires a commitment to infrastructure management and regular maintenance. By following this runbook, teams can ensure a consistent and reliable deployment lifecycle.
-ain.
 
 ```bash
 kubectl uncordon <node-name>
