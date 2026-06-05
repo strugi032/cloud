@@ -9,6 +9,8 @@
 *   [High-Level Flow](#high-level-flow)
 *   [Prerequisites](#prerequisites)
 *   [Node Requirements](#node-requirements)
+*   [Production Sizing & Hardware Specs](#production-sizing--hardware-specs)
+*   [Sizing Factors & Disclaimer](#sizing-factors--disclaimer)
 *   [Inventory Structure](#inventory-structure)
 *   [Cluster Configuration](#cluster-configuration)
 *   [Deploying the Cluster](#deploying-the-cluster)
@@ -446,6 +448,67 @@ sudo reboot
 
 ### 3. Uncordon the Node
 Once the node is back online and verified, allow it to accept workloads again.
+
+```bash
+kubectl uncordon <node-name>
+```
+
+---
+
+## Resetting the Cluster
+
+If you need to tear down the cluster entirely:
+
+```bash
+ansible-playbook -i inventory/lab/inventory.ini reset.yml -b -v
+```
+
+> [!WARNING]
+> The reset command is destructive. It will remove all Kubernetes components and data from the nodes.
+
+---
+
+## Common Issues
+
+| Problem | Possible Cause | What to Check |
+| :--- | :--- | :--- |
+| Ansible cannot connect | SSH issue, wrong key, wrong user | SSH config, inventory, firewall rules |
+| Preflight failures | Missing packages, sysctl settings | OS requirements, kernel modules |
+| Image pull timeout | No internet or registry access | Proxy settings, firewall, registry mirrors |
+| Pods stuck Pending | No resources or broken CNI | Node capacity, CNI logs, kubectl events |
+| Node NotReady | Kubelet or CNI initialization failure | Kubelet logs, CNI pods |
+| API Unreachable | Load balancer or cert issue | API server logs, firewall, cert expiry |
+
+---
+
+## Best Practices
+
+*   **Version Pinning:** Always pin your Kubespray version to a specific git tag or release.
+*   **Infrastructure as Code:** Keep your inventory and custom `group_vars` in version control.
+*   **Stable IPs:** Use static IPs for all nodes to prevent cluster breakage after reboot.
+*   **Dedicated etcd:** For production, consider dedicated nodes for etcd to isolate disk I/O.
+*   **Monitoring:** Deploy Prometheus/Grafana immediately after validation.
+*   **Staging Validation:** Test all upgrades and configuration changes in a lab/staging cluster first.
+
+---
+
+## Definition of Done
+
+A Kubespray deployment is considered complete when:
+*   [ ] All nodes are in the `Ready` state.
+*   [ ] All `kube-system` pods are `Running`.
+*   [ ] Internal DNS resolution is verified.
+*   [ ] Pod-to-Pod and Pod-to-Service networking is functional.
+*   [ ] `kubectl` access is configured for the management team.
+*   [ ] Backup and restore procedures for etcd are documented and tested.
+*   [ ] Operational ownership and support model are clearly defined.
+
+---
+
+## Summary
+
+Kubespray provides a powerful and flexible way to manage Kubernetes clusters outside of public cloud environments. While it offers deep control, it also requires a commitment to infrastructure management and regular maintenance. By following this runbook, teams can ensure a consistent and reliable deployment lifecycle.
+ain.
 
 ```bash
 kubectl uncordon <node-name>
