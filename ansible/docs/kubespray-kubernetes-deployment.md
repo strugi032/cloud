@@ -15,7 +15,10 @@
 *   [Post-Deployment Validation](#post-deployment-validation)
 *   [Scaling the Cluster](#scaling-the-cluster)
 *   [Node Replacement](#node-replacement)
+*   [Node Provisioning & OS Baseline](#node-provisioning--os-baseline)
 *   [Upgrading the Cluster](#upgrading-the-cluster)
+*   [Backup and Restore: etcd](#backup-and-restore-etcd)
+*   [General Kubernetes Backup](#general-kubernetes-backup)
 *   [Maintenance: Draining and Patching](#maintenance-draining-and-patching)
 *   [Resetting the Cluster](#resetting-the-cluster)
 *   [Common Issues](#common-issues)
@@ -321,6 +324,24 @@ ansible-playbook -i inventory/lab/inventory.ini scale.yml -b -v
 
 ---
 
+## Node Provisioning & OS Baseline
+
+Before a node can be added to the inventory and processed by Kubespray, it must have a base OS installed and fundamental configurations applied.
+
+### 1. Provisioning Options
+*   **Virtualization Tools:** Use Terraform (vSphere/KVM), Packer (Golden Images), or Cloud-Init for initial VM creation and OS installation.
+*   **Bare Metal:** Use PXE/iPXE, MAAS (Metal as a Service), or manual ISO installation.
+
+### 2. OS Baseline via Ansible
+It is highly recommended to run a "Baseline" Ansible playbook on new nodes before Kubespray. This should ensure:
+*   **SSH:** Public keys are authorized; passwordless sudo is configured.
+*   **Python:** Python 3 is installed.
+*   **Network:** Static IP or DHCP reservation is set.
+*   **Disk:** Partitions (especially `/var/lib/docker` or `/var/lib/containerd`) are correctly sized.
+*   **Security:** Firewall is disabled or configured with [Kubernetes required ports](https://kubernetes.io/docs/reference/ports-and-protocols/).
+
+---
+
 ## Upgrading the Cluster
 
 Upgrades should be performed incrementally (e.g., 1.25.x to 1.26.x). 
@@ -347,6 +368,59 @@ ansible-playbook -i inventory/lab/inventory.ini upgrade-cluster.yml -b -v
 
 > [!WARNING]
 > Kubernetes upgrades are operationally sensitive. Do not upgrade production clusters without a verified backup and a tested rollback/recovery strategy.
+
+---
+
+## Backup and Restore: etcd
+
+The etcd database stores the entire state of the Kubernetes cluster. Losing etcd means losing the cluster configuration.
+
+### 1. Automated Backup via Kubespray
+Kubespray includes a playbook to perform etcd snapshots:
+
+```bash
+# Run the etcd backup playbook
+ansible-playbook -i inventory/lab/inventory.ini extra_playbooks/upgrade-cluster.yml --tags=etcd_snapshot
+```
+
+### 2. Manual Snapshot (etcdctl)
+Run this on an etcd node:
+
+```bash
+# Snapshot the current etcd state
+ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/ssl/etcd/ca.pem \
+  --cert=/etc/kubernetes/ssl/etcd/admin-node1.pem \
+  --key=/etc/kubernetes/ssl/etcd/admin-node1-key.pem \
+  snapshot save /tmp/etcd-snapshot.db
+```
+
+### 3. Restore Strategy
+Restoring etcd is a high-risk operation that usually requires stopping all `kube-apiserver` instances.
+*   Use the `etcdctl snapshot restore` command.
+*   Update the etcd data directory on all control plane nodes.
+*   Restart the etcd and Kubernetes services.
+
+---
+
+## General Kubernetes Backup
+
+While etcd backups are for the "entire cluster," you should also backup application-level resources to ensure recovery if a version upgrade corrupts specific workloads.
+
+### 1. Resource Export
+As a baseline, export all namespace resources periodically:
+
+```bash
+# Export all resources in a namespace to YAML
+kubectl get all,configmaps,secrets,ingresses -n <namespace> -o yaml > namespace-backup.yaml
+```
+
+### 2. Velero (Recommended)
+For production clusters, use [Velero](https://velero.io/).
+*   **Purpose:** Backs up Kubernetes objects (API) and Persistent Volumes (CSI snapshots).
+*   **Upgrade Safety:** Before running `upgrade-cluster.yml`, perform a full Velero backup to an external S3-compatible store.
+*   **Recovery:** If the upgrade fails catastrophically, you can rebuild the cluster from scratch and use Velero to restore all namespaces and data.
 
 ---
 
