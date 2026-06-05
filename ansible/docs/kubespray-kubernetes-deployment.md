@@ -14,7 +14,9 @@
 *   [Deploying the Cluster](#deploying-the-cluster)
 *   [Post-Deployment Validation](#post-deployment-validation)
 *   [Scaling the Cluster](#scaling-the-cluster)
+*   [Node Replacement](#node-replacement)
 *   [Upgrading the Cluster](#upgrading-the-cluster)
+*   [Maintenance: Draining and Patching](#maintenance-draining-and-patching)
 *   [Resetting the Cluster](#resetting-the-cluster)
 *   [Common Issues](#common-issues)
 *   [Best Practices](#best-practices)
@@ -275,11 +277,43 @@ kubectl delete service nginx-test
 
 ## Scaling the Cluster
 
-To add a new node:
+To add a new worker node to an existing cluster:
 1.  Provision the new VM/hardware.
 2.  Ensure SSH access and sudo are configured.
 3.  Add the new node to the `[all]` and `[kube_node]` sections of your `inventory.ini`.
 4.  Run the scale playbook:
+
+```bash
+# Scale the cluster by adding new nodes defined in the inventory
+ansible-playbook -i inventory/lab/inventory.ini scale.yml -b -v
+```
+
+---
+
+## Node Replacement
+
+If a node fails or needs to be replaced due to aging hardware:
+
+### 1. Graceful Removal
+If the node is still reachable, first drain it and remove it from the cluster:
+
+```bash
+# Drain the node of all workloads
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+
+# Remove the node from the Kubernetes API
+kubectl delete node <node-name>
+
+# Use Kubespray to clean up the node and remove it from the configuration
+ansible-playbook -i inventory/lab/inventory.ini remove-node.yml -b -v -e "node=<node-name>"
+```
+
+### 2. Physical Replacement
+1.  Update your `inventory.ini` with the new node's details (keep the same name if preferred, or use a new one).
+2.  If the name changed, remove the old entry.
+
+### 3. Provision New Node
+Follow the **Scaling the Cluster** steps to add the new node back into the rotation:
 
 ```bash
 ansible-playbook -i inventory/lab/inventory.ini scale.yml -b -v
@@ -289,19 +323,59 @@ ansible-playbook -i inventory/lab/inventory.ini scale.yml -b -v
 
 ## Upgrading the Cluster
 
-Upgrades should be performed incrementally (one minor version at a time).
+Upgrades should be performed incrementally (e.g., 1.25.x to 1.26.x). 
 
-1.  Review Kubespray release notes.
-2.  Backup critical data (etcd).
-3.  Verify current cluster health.
-4.  Run the upgrade playbook:
+### 1. Preparation
+1.  Review [Kubespray Release Notes](https://github.com/kubernetes-sigs/kubespray/releases).
+2.  Update your local Kubespray repository to the desired version tag.
+3.  Backup critical data, especially the etcd database.
+
+### 2. Configure Target Version
+In `inventory/<cluster-name>/group_vars/k8s_cluster/k8s-cluster.yml`, update the version:
+
+```yaml
+kube_version: v1.26.3
+```
+
+### 3. Run Upgrade Playbook
+This playbook performs a rolling upgrade of all components (etcd, control plane, and workers).
 
 ```bash
+# Perform a rolling upgrade of the entire cluster
 ansible-playbook -i inventory/lab/inventory.ini upgrade-cluster.yml -b -v
 ```
 
 > [!WARNING]
 > Kubernetes upgrades are operationally sensitive. Do not upgrade production clusters without a verified backup and a tested rollback/recovery strategy.
+
+---
+
+## Maintenance: Draining and Patching
+
+For routine maintenance like OS kernel updates or security patching:
+
+### 1. Drain the Node
+Prevent new pods from being scheduled and evict existing ones.
+
+```bash
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+```
+
+### 2. Perform Maintenance
+Log into the node and perform your maintenance tasks:
+
+```bash
+ssh <node-ip>
+sudo apt update && sudo apt upgrade -y
+sudo reboot
+```
+
+### 3. Uncordon the Node
+Once the node is back online and verified, allow it to accept workloads again.
+
+```bash
+kubectl uncordon <node-name>
+```
 
 ---
 
