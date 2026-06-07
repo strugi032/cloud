@@ -4,6 +4,7 @@
 
 *   [Purpose](#purpose)
 *   [What Is Kubespray?](#what-is-kubespray)
+*   [Architecture Overview](#architecture-overview)
 *   [When to Use Kubespray](#when-to-use-kubespray)
 *   [Version Compatibility and Pinning](#version-compatibility-and-pinning)
 *   [Repository Layout](#repository-layout)
@@ -55,7 +56,15 @@ Kubespray automates:
 *   Kubelet and kubeadm configuration
 
 > [!IMPORTANT]
-> Kubespray creates a self-managed Kubernetes cluster. The team is responsible for upgrades, monitoring, backups, security, and operational support of both the workloads and the control plane itself.
+Kubespray creates a self-managed Kubernetes cluster. The team is responsible for upgrades, monitoring, backups, security, and operational support of both the workloads and the control plane itself.
+
+---
+
+## Architecture Overview
+
+The following diagram provides a high-level overview of the Kubernetes architecture deployed and configured using Kubespray.
+
+![Kubespray architecture overview](images/kubespray-architecture.png)
 
 ---
 
