@@ -4,7 +4,8 @@ metadata:
   name: slo-demo
   namespace: slo-demo
   labels:
-    # This label often needs to match the kube-prometheus-stack release label
+    # This label must match the label selected by your Prometheus installation.
+    # For kube-prometheus-stack, it is usually 'release: kube-prometheus-stack'.
     release: kube-prometheus-stack
 spec:
   selector:
