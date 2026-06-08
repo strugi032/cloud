@@ -145,7 +145,7 @@ echo
 The dashboard consists of six key panels:
 
 1. **Availability vs SLO and SLA:** A time-series view of actual availability compared to our 99.9% SLO and 99.5% SLA lines.
-2. **Current Availability:** A single stat showing the most recent availability measurement.
+2. **SLO Burn Rate:** A stat panel showing how quickly the service consumes its 99.9% SLO error budget. A burn rate of 1.0 means the budget is being consumed exactly at the rate that will exhaust it by the end of the evaluation period. Values above 1.0 are not sustainable.
 3. **Error Budget Remaining:** A gauge showing how much of your error budget (based on the 99.9% SLO) remains for the selected time range.
 4. **Request Rate:** Total traffic volume, grouped by HTTP status code.
 5. **HTTP 5xx Error Rate:** A focused view of server-side errors.
