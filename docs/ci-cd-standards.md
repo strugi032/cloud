@@ -44,6 +44,17 @@ Commit -> Build -> Test -> Scan -> Package -> Deploy to Dev -> Promote -> Deploy
 - **Deployment:** Use the **exact same artifact** across all environments.
 - **Approval Gates:** Manual or automated gate for Production based on Staging success.
 
+#### Deployment Monitoring Downtime
+
+For deployments that may cause expected restarts or temporary service degradation, it is a recommended practice to optionally automate a maintenance window or monitoring downtime directly from the pipeline. This reduces false-positive alerts and unnecessary on-call notifications during the rollout phase.
+
+* May be configured in the monitoring platform or incident/on-call management tool.
+* Should target only the affected service or service group.
+* Should start immediately before the deployment process begins.
+* Must have an automatic expiration.
+* Should be removed after successful deployment validation.
+* Must not suppress unrelated or critical infrastructure alerts.
+
 ## Secrets Handling
 
 > [!WARNING]
