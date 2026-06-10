@@ -13,6 +13,9 @@ They do not truly understand systems the way humans do.
 They can produce useful drafts but can also produce wrong or outdated answers.
 They need clear context and human review.
 
+> [!NOTE]
+> LLM output can be a very useful starting point, but it may be incorrect, incomplete, or outdated. Always verify the results against documentation and reality.
+
 ## What Is Gemini CLI?
 
 Gemini CLI is a terminal-based AI coding assistant that can work with local project context.
@@ -68,6 +71,9 @@ It should not include:
 - temporary personal notes
 - huge duplicated documentation
 - vague instructions
+
+> [!WARNING]
+> Secrets, tokens, passwords, and private credentials must never be stored in `GEMINI.md` or any other committed context file.
 
 ## Example GEMINI.md for a Python Project
 
@@ -134,6 +140,88 @@ Examples:
 
 MCP increases capability but also increases risk, because the agent may gain access to tools or data.
 
+> [!NOTE]
+> Connecting an MCP server gives the assistant access to external tools or data, depending entirely on what the configured server exposes.
+
+## MCP Examples
+
+### Documentation MCP
+
+Purpose:
+- Search official documentation.
+- Help answer questions about libraries, tools, APIs, or cloud services.
+
+Useful for:
+- checking current syntax
+- reading API docs
+- comparing configuration options
+- reducing outdated answers
+
+Risk:
+- The assistant may still summarize incorrectly, so important claims should be verified.
+
+### GitHub MCP
+
+Purpose:
+- Read repositories, issues, pull requests, branches, and commits.
+- Help summarize changes or review context.
+
+Useful for:
+- understanding pull requests
+- summarizing issues
+- finding related code
+- drafting PR descriptions
+
+Risk:
+- Write access can be dangerous if enabled.
+- Creating branches, comments, issues, or pull requests should require review.
+
+### Local Filesystem MCP
+
+Purpose:
+- Give the assistant structured access to local project files.
+
+Useful for:
+- reading project structure
+- finding references
+- updating documentation
+- reviewing code
+
+Risk:
+- File write access should be controlled.
+- Destructive changes must not be approved blindly.
+
+### Cloud Provider MCP
+
+Purpose:
+- Query cloud resources, documentation, or account metadata depending on the server.
+
+Useful for:
+- reading cloud documentation
+- checking resource configuration
+- helping with troubleshooting
+
+Risk:
+- Never expose credentials in prompts or config files.
+- Prefer read-only access.
+- Production-changing actions must require human approval.
+
+### Internal Tools MCP
+
+Purpose:
+- Connect the assistant to internal APIs, ticketing systems, dashboards, or knowledge bases.
+
+Useful for:
+- finding runbooks
+- reading incidents
+- searching tickets
+- summarizing operational context
+
+Risk:
+- Access control matters.
+- Internal data may be sensitive.
+- Avoid sending unnecessary private data to the model.
+
 ## Safe Use of MCP
 
 When using MCP:
@@ -144,6 +232,28 @@ When using MCP:
 - review actions before execution
 - keep project and global configuration separate
 - do not blindly approve tool calls
+
+> [!CAUTION]
+> Write-capable MCP servers should be treated carefully because the assistant may be able to create issues, modify files, call APIs, or trigger automated actions.
+
+### Example MCP Configuration
+
+This generic example illustrates the shape of an MCP configuration. Real configuration depends on the chosen MCP server. Secrets should not be committed to this configuration file, and read-only access should be preferred first.
+
+```json
+{
+  "mcpServers": {
+    "docs": {
+      "command": "example-docs-mcp",
+      "args": []
+    },
+    "github-readonly": {
+      "command": "example-github-mcp",
+      "args": ["--read-only"]
+    }
+  }
+}
+```
 
 ## How to Use Gemini CLI in a Python Project
 
@@ -161,6 +271,9 @@ When using MCP:
    - Example prompt: "Summarize the changed files and explain why each change was needed."
 7. Run validation
    - Example prompt: "Run tests and linting. If something fails, explain the failure before fixing it."
+
+> [!TIP]
+> The safest workflow is: understand first, plan second, change third, review last.
 
 ## Good Prompt Examples
 
@@ -237,6 +350,24 @@ AI can help draft and analyze these, but a human must review and approve.
 - Does the final diff match the original request?
 
 ## Recommended Repository Structure
+
+`GEMINI.md` belongs at the repository root because it provides project-level context to the AI assistant.
+
+### Example structure for this repository
+
+```text
+.
+├── GEMINI.md
+├── README.md
+├── ansible/
+├── docs/
+│   ├── ai-assisted-development.md
+│   ├── adr-template.md
+│   └── runbooks/
+└── aws-azure-service-comparison.md
+```
+
+### Example structure for a Python project
 
 ```text
 .
