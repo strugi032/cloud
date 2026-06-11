@@ -10,12 +10,12 @@ Starting work on a Jira ticket often involves repeated manual steps:
 * include the Jira ticket ID in the branch name
 * keep branch naming consistent across repositories
 
-The `git task` helper makes this process repeatable and less error-prone.
+The `git-task` helper makes this process repeatable and less error-prone.
 
 ## Example Usage
 
 ```bash
-git task DEVOPS-123 "add terraform validation"
+git-task DEVOPS-123 "add terraform validation"
 ```
 
 Creates:
@@ -25,7 +25,7 @@ feature/DEVOPS-123-add-terraform-validation
 ```
 
 ```bash
-git task DEVOPS-248 "fix github actions cache"
+git-task DEVOPS-248 "fix github actions cache"
 ```
 
 Creates:
@@ -35,7 +35,7 @@ feature/DEVOPS-248-fix-github-actions-cache
 ```
 
 ```bash
-git task DEVOPS-301 "document jenkins recovery"
+git-task DEVOPS-301 "document jenkins recovery"
 ```
 
 Creates:
@@ -44,9 +44,13 @@ Creates:
 docs/DEVOPS-301-document-jenkins-recovery
 ```
 
-## How Git Custom Commands Work
+## Why `git-task` Instead of `git task`
 
-Git can run custom commands when an executable named `git-task` exists in the user’s `$PATH`.
+Using `git-task` makes it clear that this is a custom local helper script, not a built-in Git command. This reduces confusion and clarifies that the helper is a personal workflow script.
+
+## Optional Git Subcommand Usage
+
+If the executable named `git-task` is available in your `$PATH`, Git can also run it as an optional subcommand.
 
 This allows the command to be used as:
 
@@ -54,23 +58,7 @@ This allows the command to be used as:
 git task DEVOPS-123 "add terraform validation"
 ```
 
-instead of:
-
-```bash
-git-task DEVOPS-123 "add terraform validation"
-```
-
-## Why No Per-Repository Hidden Files
-
-The helper should not require files like `.git-task.env` inside every repository.
-
-Reasons:
-
-* avoids repository clutter
-* avoids committing personal workflow settings
-* works across many repositories
-* keeps the helper local to the developer
-* avoids changing shared project structure
+This behavior is optional and relies on Git's standard custom command discovery.
 
 ## Configuration Model
 
@@ -88,44 +76,23 @@ branch prefix: feature
 include title in branch name: true
 ```
 
-Optional global Git config example:
-
-```ini
-[task "kube-image-inventory"]
-	baseBranch = main
-	branchPrefix = feature
-	includeTitle = true
-
-[task "cloud"]
-	baseBranch = main
-	branchPrefix = docs
-	includeTitle = true
-
-[task "legacy-project"]
-	baseBranch = master
-	branchPrefix = bugfix
-	includeTitle = false
-```
-
-This configuration is stored in the user’s global Git configuration, not in the repository.
-
 ## Expected Behavior
 
 The command:
 
 ```bash
-git task DEVOPS-123 "add terraform validation"
+git-task DEVOPS-123 "add terraform validation"
 ```
 
 should:
 
 * verify that the current directory is inside a Git repository
 * detect the repository name from `origin`
+* fetch from origin before detecting remote branches
 * detect the default base branch
 * read optional global config for that repository
 * fetch latest changes
-* check out the remote base branch
-* create a new branch
+* check out a new branch from the remote base branch using `git switch`
 * slugify the short description
 * print what it did
 
@@ -137,91 +104,11 @@ It should not:
 * run destructive commands
 * require repository-local config files
 
-## Example Script
-
-Path:
-
-```text
-~/bin/git-task
-```
-
-Script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-task_id="${1:-}"
-title="${2:-}"
-
-if [[ -z "$task_id" ]]; then
-  echo "usage: git task <jira-ticket> [short description]"
-  echo "example: git task DEVOPS-123 \"add terraform validation\""
-  exit 1
-fi
-
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "error: not inside a Git repository"
-  exit 1
-fi
-
-repo_name="$(basename -s .git "$(git config --get remote.origin.url 2>/dev/null || echo unknown)")"
-
-detect_base_branch() {
-  local head_ref
-
-  head_ref="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
-
-  if [[ -n "$head_ref" ]]; then
-    echo "${head_ref#refs/remotes/origin/}"
-    return
-  fi
-
-  if git show-ref --verify --quiet refs/remotes/origin/main; then
-    echo "main"
-    return
-  fi
-
-  if git show-ref --verify --quiet refs/remotes/origin/master; then
-    echo "master"
-    return
-  fi
-
-  echo "main"
-}
-
-slugify() {
-  echo "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -E 's/[^a-z0-9]+/-/g' \
-    | sed -E 's/^-+|-+$//g'
-}
-
-base_branch="$(git config --get "task.${repo_name}.baseBranch" || detect_base_branch)"
-branch_prefix="$(git config --get "task.${repo_name}.branchPrefix" || echo "feature")"
-include_title="$(git config --get "task.${repo_name}.includeTitle" || echo "true")"
-
-if [[ "$include_title" == "true" && -n "$title" ]]; then
-  branch="${branch_prefix}/${task_id}-$(slugify "$title")"
-else
-  branch="${branch_prefix}/${task_id}"
-fi
-
-echo "Repository:  $repo_name"
-echo "Base branch: $base_branch"
-echo "New branch:  $branch"
-
-git fetch origin
-git checkout "origin/${base_branch}"
-git checkout -b "$branch"
-
-echo "Branch created successfully."
-```
-
 ## Installation
 
 ```bash
 mkdir -p ~/bin
+cp scripts/git-task ~/bin/git-task
 chmod +x ~/bin/git-task
 ```
 
@@ -235,32 +122,35 @@ export PATH="$HOME/bin:$PATH"
 
 Example for normal feature work:
 
-```bash
-git config --global task.kube-image-inventory.baseBranch main
-git config --global task.kube-image-inventory.branchPrefix feature
-git config --global task.kube-image-inventory.includeTitle true
+```ini
+[task "kube-image-inventory"]
+	baseBranch = main
+	branchPrefix = feature
+	includeTitle = true
 ```
 
 Example for documentation repository:
 
-```bash
-git config --global task.cloud.baseBranch main
-git config --global task.cloud.branchPrefix docs
-git config --global task.cloud.includeTitle true
+```ini
+[task "cloud"]
+	baseBranch = main
+	branchPrefix = docs
+	includeTitle = true
 ```
 
 Example for older repository using `master`:
 
-```bash
-git config --global task.legacy-project.baseBranch master
-git config --global task.legacy-project.branchPrefix bugfix
-git config --global task.legacy-project.includeTitle false
+```ini
+[task "legacy-project"]
+	baseBranch = master
+	branchPrefix = bugfix
+	includeTitle = false
 ```
 
-## More Usage Examples
+## Usage Examples
 
 ```bash
-git task DEVOPS-410 "add runbook template"
+git-task DEVOPS-410 "add runbook template"
 ```
 
 Creates:
@@ -270,7 +160,7 @@ feature/DEVOPS-410-add-runbook-template
 ```
 
 ```bash
-git task DEVOPS-411 "improve adr template"
+git-task DEVOPS-411 "improve adr template"
 ```
 
 With `cloud` configured to use `docs` prefix, creates:
@@ -280,7 +170,7 @@ docs/DEVOPS-411-improve-adr-template
 ```
 
 ```bash
-git task DEVOPS-500 "fix deployment pipeline"
+git-task DEVOPS-500 "fix deployment pipeline"
 ```
 
 Creates:
@@ -289,33 +179,41 @@ Creates:
 feature/DEVOPS-500-fix-deployment-pipeline
 ```
 
+## Limitations
+
+* assumes the repository has an `origin` remote
+* creates local branches only
+* does not push automatically
+* does not validate whether the Jira ticket exists
+* does not update Jira
+* repositories with unusual branching rules may need global Git config overrides
+
+## Safety Notes
+
+* does not delete branches
+* does not push automatically
+* does not run destructive commands
+* prints what it is going to create
+* user should review the branch name before pushing
+
 ## Optional Jira Integration
 
 Jira integration can be added later, but should not be enabled by default.
 
-Possible future behavior:
+Possible future improvements:
 
-* read ticket title from Jira
-* move ticket to “In Progress”
+* validate ticket exists
+* read ticket title
 * print ticket URL
-* validate that the ticket exists
+* move ticket to “In Progress”
 
-This should remain optional. Jira integration should not be implemented in the main script because different repositories and teams may use different Jira projects, workflows, statuses, or permissions.
-
-## Safety Notes
-
-* the helper only creates a local branch
-* it does not push automatically
-* it does not modify Jira by default
-* it does not delete anything
-* it does not run destructive commands
-* users should review the branch name before pushing
+This is not enabled by default because different teams use different Jira workflows, statuses, permissions, and project keys.
 
 ## Summary
 
-* `git task` is a small local Git helper
+* `git-task` is a small local Git helper
 * it starts work on Jira-style tasks consistently
 * it avoids repository-local config files
 * it uses default branch detection
-* it supports optional global Git config
+* it supports optional global Git config overrides
 * it can be extended later, but should stay simple

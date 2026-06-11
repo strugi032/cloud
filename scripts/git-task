@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+task_id="${1:-}"
+title="${2:-}"
+
+if [[ -z "$task_id" ]]; then
+  echo "usage: git-task <jira-ticket> [short description]"
+  echo "example: git-task DEVOPS-123 \"add terraform validation\""
+  exit 1
+fi
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "error: not inside a Git repository"
+  exit 1
+fi
+
+origin_url="$(git config --get remote.origin.url 2>/dev/null || true)"
+
+if [[ -z "$origin_url" ]]; then
+  echo "error: repository does not have an origin remote"
+  exit 1
+fi
+
+repo_name="$(basename -s .git "$origin_url")"
+
+slugify() {
+  echo "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g' \
+    | sed -E 's/^-+|-+$//g'
+}
+
+detect_base_branch() {
+  local head_ref
+
+  head_ref="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
+
+  if [[ -n "$head_ref" ]]; then
+    echo "${head_ref#refs/remotes/origin/}"
+    return
+  fi
+
+  if git show-ref --verify --quiet refs/remotes/origin/main; then
+    echo "main"
+    return
+  fi
+
+  if git show-ref --verify --quiet refs/remotes/origin/master; then
+    echo "master"
+    return
+  fi
+
+  echo "main"
+}
+
+git fetch origin --prune
+
+base_branch="$(git config --get "task.${repo_name}.baseBranch" || detect_base_branch)"
+branch_prefix="$(git config --get "task.${repo_name}.branchPrefix" || echo "feature")"
+include_title="$(git config --get "task.${repo_name}.includeTitle" || echo "true")"
+
+if [[ "$include_title" == "true" && -n "$title" ]]; then
+  branch="${branch_prefix}/${task_id}-$(slugify "$title")"
+else
+  branch="${branch_prefix}/${task_id}"
+fi
+
+echo "Repository:  $repo_name"
+echo "Base branch: $base_branch"
+echo "New branch:  $branch"
+
+if git show-ref --verify --quiet "refs/heads/${branch}"; then
+  echo "error: local branch already exists: $branch"
+  exit 1
+fi
+
+git switch --create "$branch" "origin/${base_branch}"
+
+echo "Branch created successfully."
