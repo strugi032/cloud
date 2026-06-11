@@ -44,7 +44,7 @@ Every measurement must have a clearly defined:
 * SLA: 99.5%
 * Error budget: 0.1%
 
-*Note: The [SLO Demo](../examples/slo-demo/README.md) uses a short dashboard window so that results are visible quickly, while a production SLA would normally be evaluated over a longer period.*
+*Note: The [SLO Demo](../../k8s-examples/slo-demo/README.md) uses a short dashboard window so that results are visible quickly, while a production SLA would normally be evaluated over a longer period.*
 
 ## 2. Logs
 - [ ] Logs are structured (JSON) for easy parsing.
@@ -81,7 +81,7 @@ Every measurement must have a clearly defined:
 - [ ] SLIs/SLOs are clearly defined and measurable.
 - [ ] Alert routing is configured to the owning team.
 
-See the [Kubernetes SLO Demo](../examples/slo-demo/README.md) for a practical implementation.
+See the [Kubernetes SLO Demo](../../k8s-examples/slo-demo/README.md) for a practical implementation.
 
 > [!IMPORTANT]
 > Observability is not only about collecting data. It is about making the system understandable during normal operation and incidents.
