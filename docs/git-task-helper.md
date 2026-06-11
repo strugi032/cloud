@@ -1,29 +1,65 @@
 # Git Task Helper
 
 ## Purpose
-The `git-task` helper streamlines the process of starting work on a new task. It integrates with Jira to automatically fetch issue details, derive appropriate branch types, create a correctly formatted local branch, and update the Jira ticket status and comments.
 
-## What It Does
-When run, the helper:
-1. Verifies the environment (Git repository, `origin` remote, dependencies).
-2. Fetches the latest remote refs.
-3. Retrieves ticket details from the Jira Cloud REST API.
-4. Derives the branch type from the Jira issue type.
-5. Creates a local Git branch originating from the repository's base branch.
-6. Transitions the Jira ticket to `In Progress` (or a configured state).
-7. Adds a comment to the Jira ticket with the new branch name.
+`git-task` is a small local Python utility for starting work on ticket-based Git branches.
+
+It helps with the repetitive parts of the workflow:
+
+- Detect the target Git repository.
+- Detect the base branch.
+- Read the Jira issue summary and issue type.
+- Create a correctly named local branch.
+- Move the Jira ticket to `In Progress`.
+- Add a Jira comment with the generated branch name.
+- Print the push command.
+
+The tool does not push branches, create pull requests, delete anything, or run destructive Git commands.
 
 ## Requirements
-To use `git-task`, you need:
-- `git`
-- `curl`
-- `jq`
-- A Jira Cloud account
-- A Jira API token
-- Permission to browse issues, transition issues, and add comments.
+
+You need:
+
+- Python 3
+- Git
+- Jira Cloud account
+- Jira API token
+- Permission to browse Jira issues
+- Permission to transition Jira issues
+- Permission to add Jira comments
+
+Python dependencies are listed in `requirements.txt`:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+The Python implementation uses:
+
+- `GitPython` for Git operations
+- `jira` for Jira operations
+
+It does not require `curl` or `jq`.
+
+## Installation
+
+Copy the script to a directory on your `PATH` and make it executable:
+
+```bash
+mkdir -p ~/bin
+cp scripts/git-task ~/bin/git-task
+chmod +x ~/bin/git-task
+```
+
+Ensure `~/bin` is in your `PATH`. For example, add this to `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export PATH="$HOME/bin:$PATH"
+```
 
 ## Jira Configuration
-The helper uses environment variables to authenticate with Jira. Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+
+Set Jira credentials through environment variables:
 
 ```bash
 export JIRA_BASE_URL="https://example.atlassian.net"
@@ -31,19 +67,16 @@ export JIRA_EMAIL="user@example.com"
 export JIRA_API_TOKEN="local-api-token"
 ```
 
-> [!WARNING]
-> Do not commit Jira API tokens, credentials, or personal configuration into the repository. Keep them in a local shell profile, password manager, or approved secret store.
+Do not commit Jira tokens, credentials, or personal configuration into the repository. Keep them in a local shell profile, password manager, or approved secret store.
 
-## Global Git Config
-You can configure repository-specific behavior globally using `git config`. This is useful for repositories that have different base branches or require different Jira transition names.
+## Git Configuration
+
+You can use Git config to customize repository-specific behavior.
+
+Example `~/.gitconfig`:
 
 ```ini
 [task "cloud"]
-	baseBranch = main
-	jiraTransition = In Progress
-	addComment = true
-
-[task "kube-image-inventory"]
 	baseBranch = main
 	jiraTransition = In Progress
 	addComment = true
@@ -52,103 +85,196 @@ You can configure repository-specific behavior globally using `git config`. This
 	defaultType = feature
 ```
 
+Supported keys:
+
+- `task.<repo-name>.baseBranch`: Base branch to create work branches from.
+- `task.<repo-name>.jiraTransition`: Jira transition target. Defaults to `In Progress`.
+- `task.<repo-name>.addComment`: Set to `false` to disable Jira comments by default.
+- `task.defaultType`: Fallback branch type. Defaults to `feature`.
+
+If `baseBranch` is not configured, the helper tries:
+
+1. `origin/HEAD`
+2. `origin/main`
+3. `origin/master`
+
 ## Branch Naming
-The generated branch will follow this format:
+
+Branches use this format:
+
 ```text
 <type>/<ticket-key>-<slugified-title>
 ```
 
-Examples:
-- `feature/DEVOPS-123-add-terraform-validation`
-- `bugfix/DEVOPS-248-fix-github-actions-cache`
-- `docs/DEVOPS-301-document-jenkins-recovery`
-- `hotfix/DEVOPS-500-fix-production-deploy`
-- `chore/DEVOPS-600-update-dependencies`
+Example:
+
+```text
+feature/DEVOPS-123-add-terraform-validation
+```
+
+The title is lowercased and converted into a simple URL-safe slug.
 
 ## Branch Type Mapping
-The branch `<type>` represents the kind of work and is automatically derived from the Jira issue type:
 
-- `Bug` -> `bugfix`
-- `Story` -> `feature`
-- `Task` -> `feature`
-- `Improvement` -> `feature`
-- `Incident` -> `hotfix`
-- `Documentation` -> `docs`
+By default, Jira issue type controls the branch prefix:
 
-If the issue type is not mapped, it defaults to `feature` (or your configured `task.defaultType`). You can always override this using the `--type` flag.
+| Jira issue type | Branch type |
+| --- | --- |
+| `Bug` | `bugfix` |
+| `Story` | `feature` |
+| `Task` | `feature` |
+| `Improvement` | `feature` |
+| `Incident` | `hotfix` |
+| `Documentation` | `docs` |
 
-## Usage Examples
+Unknown issue types use `task.defaultType`, or `feature` if that config is not set.
 
-**Default Jira-driven mode:**
+You can override the branch type with `--type`.
+
+## Usage
+
+Standard workflow:
+
 ```bash
 git-task DEVOPS-123
 ```
 
-**Manual title override:**
+Use a manual title instead of the Jira summary:
+
 ```bash
 git-task DEVOPS-123 "add terraform validation"
 ```
 
-**Manual branch type override:**
-```bash
-git-task DEVOPS-123 --type docs
-```
-
-**Open Jira ticket after processing:**
-```bash
-git-task DEVOPS-123 --open
-```
-
-## How It Works
-The helper dynamically determines the base branch by checking your global `git config` for the repository. If not configured, it checks `origin/HEAD`, and falls back to `main` or `master`. It then talks to Jira via the REST API v3 using Atlassian Document Format (ADF) to add comments and transitions the issue state based on the name.
-
-## Dry Run Mode
-You can see what the tool would do without making any changes to your local Git repository or remote Jira instance:
+Override the branch type:
 
 ```bash
-git-task DEVOPS-123 --dry-run
+git-task --type docs DEVOPS-123
 ```
 
-## No Jira Mode
-If you do not have Jira access or just want to create a branch without making API calls, use `--no-jira`. A manual title must be provided.
+Skip Jira completely:
 
 ```bash
 git-task --no-jira DEVOPS-123 "add terraform validation"
 ```
 
-## Safety Notes
-- The helper creates only a **local branch**.
-- It **does not push** automatically.
-- It **does not create pull requests**.
-- It **does not delete branches**.
-- It **does not run destructive Git commands**.
-- Jira mutations can be bypassed with `--no-transition` and `--no-comment`.
-- `--dry-run` should be used when testing your configuration.
-- Transition names depend on your specific Jira workflow.
-- Users should review the generated branch name before pushing to the remote.
+Preview without changing Git or Jira:
 
-## Limitations
-- Assumes Jira Cloud REST API v3.
-- Assumes issue keys format like `DEVOPS-123`.
-- Assumes an `origin` remote exists.
-- Requires `curl` and `jq` installed on your machine.
-- The targeted transition name must be available for the issue's current status.
-- Does not automatically support every custom Jira workflow.
-- Does not support multiple Jira instances automatically.
-- Does not assign tickets unless added later.
-- Does not create pull requests or push branches.
+```bash
+git-task --dry-run DEVOPS-123
+```
+
+Open the Jira issue after normal processing:
+
+```bash
+git-task --open DEVOPS-123
+```
+
+Read Jira but do not transition the ticket:
+
+```bash
+git-task --no-transition DEVOPS-123
+```
+
+Read Jira but do not add a comment:
+
+```bash
+git-task --no-comment DEVOPS-123
+```
+
+## Dry Run Mode
+
+`--dry-run` does not mutate Git, Jira, or the browser.
+
+In dry-run mode, the helper may read local Git state, read Git config, read Jira issue data, and compute the branch name.
+
+It will not:
+
+- Fetch remote refs
+- Create a branch
+- Check out a branch
+- Transition the Jira ticket
+- Add a Jira comment
+- Open the browser, even if `--open` is passed
+
+Dry-run output includes:
+
+- Repository name
+- Ticket key
+- Summary
+- Issue type
+- Base branch
+- New branch
+- Jira URL when Jira is enabled
+- Planned transition
+- Planned comment
+
+## No Jira Mode
+
+`--no-jira` skips all Jira API calls.
+
+Because Jira is not used to read the summary, a manual title is required:
+
+```bash
+git-task --no-jira DEVOPS-123 "add terraform validation"
+```
+
+In no-Jira mode:
+
+- The manual title is used for the branch slug.
+- The branch type defaults to `task.defaultType` or `feature`.
+- `--type` still overrides the branch type.
+- No Jira transition or comment is attempted.
+
+## Failure Behavior
+
+Fatal errors stop the command with a non-zero exit code.
+
+Examples:
+
+- Command is run outside a Git repository.
+- No `origin` remote exists.
+- Required Jira environment variables are missing.
+- Jira issue cannot be fetched.
+- Base branch cannot be detected.
+- Local branch already exists.
+- Branch creation fails.
+
+If the local branch is created successfully but a Jira transition or comment fails, the helper keeps the branch in place and prints manual follow-up instructions.
+
+For example, it may tell you to:
+
+- Move the ticket to `In Progress` manually.
+- Add this comment manually: `Started work on branch <branch-name>`.
+
+The final push command is still printed when possible.
+
+## Troubleshooting
+
+- **Missing Python package**: Run `python3 -m pip install -r requirements.txt`.
+- **Jira credentials missing**: Set `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`.
+- **Jira API returns 401 or 403**: Check that your email and API token are valid.
+- **Jira transition not found**: The target transition may not be available from the ticket's current status.
+- **Branch already exists**: Check out the existing branch or choose a different title/type.
+- **No `origin` remote**: Add or rename the expected remote to `origin`.
+- **Base branch cannot be detected**: Configure `task.<repo>.baseBranch`, or make sure `origin/HEAD`, `origin/main`, or `origin/master` exists.
+
+## Safety Notes
+
+- The helper creates only a local branch.
+- It does not push automatically.
+- It does not create pull requests.
+- It does not delete branches.
+- It does not run destructive Git commands.
+- Jira mutations can be disabled with `--no-transition` and `--no-comment`.
+- Use `--dry-run` when checking configuration.
 
 ## Future Improvements
-- Assign issue to current user.
-- Open the Jira ticket in browser.
-- Create pull request after first push.
-- Support GitHub/GitLab/Bitbucket PR creation.
-- Cache Jira issue summaries.
-- Shell completion for assigned Jira tickets.
-- Custom Jira issue type mappings.
-- Support multiple Jira instances.
-- Support GitHub Issues or Linear.
-- Support `git-task finish` to move ticket to review.
 
-## Summary
-The `git-task` helper saves time by automating boilerplate branch creation and Jira updates. It is designed to be safe, requiring manual review and pushing, while keeping external configuration out of your project repositories.
+- Assign issue to current user.
+- Create a pull request after first push.
+- Support GitHub, GitLab, or Bitbucket pull request creation.
+- Cache Jira issue summaries.
+- Add shell completion.
+- Support custom Jira issue type mappings.
+- Support multiple Jira instances.
+- Support `git-task finish` to move tickets to review.
