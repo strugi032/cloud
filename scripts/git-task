@@ -1,80 +1,342 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-task_id="${1:-}"
-title="${2:-}"
+# --- Configuration & Defaults ---
+DEFAULT_TRANSITION="In Progress"
+DEFAULT_TYPE="feature"
 
-if [[ -z "$task_id" ]]; then
-  echo "usage: git-task <jira-ticket> [short description]"
-  echo "example: git-task DEVOPS-123 \"add terraform validation\""
+# --- Globals ---
+TICKET=""
+MANUAL_TITLE=""
+TYPE_OVERRIDE=""
+DRY_RUN=0
+NO_JIRA=0
+OPEN_ISSUE=0
+NO_TRANSITION=0
+NO_COMMENT=0
+
+# --- Helper Functions ---
+
+log_err() {
+  echo "Error: $1" >&2
+}
+
+die() {
+  log_err "$1"
   exit 1
-fi
+}
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "error: not inside a Git repository"
-  exit 1
-fi
+check_deps() {
+  local deps=("git" "curl" "jq")
+  for dep in "${deps[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      die "Required dependency '$dep' is not installed."
+    fi
+  done
+}
 
-origin_url="$(git config --get remote.origin.url 2>/dev/null || true)"
+usage() {
+  cat <<EOF
+Usage: git-task [OPTIONS] <ticket> [manual title]
 
-if [[ -z "$origin_url" ]]; then
-  echo "error: repository does not have an origin remote"
-  exit 1
-fi
+A Jira-aware Git workflow helper to start work on a ticket.
 
-repo_name="$(basename -s .git "$origin_url")"
+Arguments:
+  <ticket>         The Jira ticket key (e.g., DEVOPS-123).
+  [manual title]   Optional manual title override. Required if --no-jira is used.
+
+Options:
+  --type <type>    Override branch type (e.g., feature, bugfix, docs).
+  --no-jira        Do not call Jira API. Manual title is required.
+  --dry-run        Print what would happen, but do not create branch or modify Jira.
+  --open           Open Jira issue in browser after processing.
+  --no-transition  Read Jira but do not move the ticket.
+  --no-comment     Read Jira but do not add a comment.
+  --help           Show this help message.
+EOF
+}
 
 slugify() {
-  echo "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -E 's/[^a-z0-9]+/-/g' \
-    | sed -E 's/^-+|-+$//g'
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-+|-+$//g'
 }
 
-detect_base_branch() {
-  local head_ref
-
-  head_ref="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
-
-  if [[ -n "$head_ref" ]]; then
-    echo "${head_ref#refs/remotes/origin/}"
-    return
-  fi
-
-  if git show-ref --verify --quiet refs/remotes/origin/main; then
-    echo "main"
-    return
-  fi
-
-  if git show-ref --verify --quiet refs/remotes/origin/master; then
-    echo "master"
-    return
-  fi
-
-  echo "main"
+map_issue_type() {
+  local jira_type="$1"
+  # Default mapping:
+  case "${jira_type,,}" in
+    bug) echo "bugfix" ;;
+    story|task|improvement) echo "feature" ;;
+    incident) echo "hotfix" ;;
+    documentation) echo "docs" ;;
+    *) echo "${DEFAULT_TYPE}" ;;
+  esac
 }
 
-git fetch origin --prune
+# --- Main Script ---
 
-base_branch="$(git config --get "task.${repo_name}.baseBranch" || detect_base_branch)"
-branch_prefix="$(git config --get "task.${repo_name}.branchPrefix" || echo "feature")"
-include_title="$(git config --get "task.${repo_name}.includeTitle" || echo "true")"
+check_deps
 
-if [[ "$include_title" == "true" && -n "$title" ]]; then
-  branch="${branch_prefix}/${task_id}-$(slugify "$title")"
+# Parse arguments
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --type)
+      if [[ -z "${2:-}" ]]; then
+        die "Missing argument for --type"
+      fi
+      TYPE_OVERRIDE="$2"
+      shift 2
+      ;;
+    --no-jira)
+      NO_JIRA=1
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --open)
+      OPEN_ISSUE=1
+      shift
+      ;;
+    --no-transition)
+      NO_TRANSITION=1
+      shift
+      ;;
+    --no-comment)
+      NO_COMMENT=1
+      shift
+      ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    -*)
+      die "Unknown option: $1"
+      ;;
+    *)
+      POSITIONAL+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ${#POSITIONAL[@]} -gt 0 ]]; then
+  TICKET="${POSITIONAL[0]}"
+fi
+if [[ ${#POSITIONAL[@]} -gt 1 ]]; then
+  MANUAL_TITLE="${POSITIONAL[1]}"
+fi
+
+if [[ -z "$TICKET" ]]; then
+  usage
+  echo
+  die "Ticket argument is required."
+fi
+
+# Ensure we are in a git repository
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  die "Not inside a Git repository."
+fi
+
+# Ensure origin remote exists
+if ! git remote get-url origin >/dev/null 2>&1; then
+  die "No 'origin' remote exists."
+fi
+
+REPO_DIR=$(git rev-parse --show-toplevel)
+REPO_NAME=$(basename "$REPO_DIR")
+
+# Get config
+CONF_BASE_BRANCH=$(git config "task.${REPO_NAME}.baseBranch" || true)
+CONF_TRANSITION=$(git config "task.${REPO_NAME}.jiraTransition" || true)
+CONF_ADD_COMMENT=$(git config "task.${REPO_NAME}.addComment" || true)
+CONF_DEFAULT_TYPE=$(git config "task.defaultType" || true)
+
+if [[ -n "$CONF_DEFAULT_TYPE" ]]; then
+  DEFAULT_TYPE="$CONF_DEFAULT_TYPE"
+fi
+
+# Fetch remote refs
+echo "Fetching latest remote refs..."
+git fetch origin --quiet
+
+# Detect base branch
+BASE_BRANCH=""
+if [[ -n "$CONF_BASE_BRANCH" ]]; then
+  BASE_BRANCH="$CONF_BASE_BRANCH"
 else
-  branch="${branch_prefix}/${task_id}"
+  # Try origin/HEAD
+  if ORIGIN_HEAD=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null); then
+    BASE_BRANCH="${ORIGIN_HEAD#refs/remotes/origin/}"
+  else
+    # Fallbacks
+    if git show-ref --verify --quiet refs/remotes/origin/main; then
+      BASE_BRANCH="main"
+    elif git show-ref --verify --quiet refs/remotes/origin/master; then
+      BASE_BRANCH="master"
+    else
+      die "Could not detect base branch. Set one using git config task.${REPO_NAME}.baseBranch <branch>"
+    fi
+  fi
 fi
 
-echo "Repository:  $repo_name"
-echo "Base branch: $base_branch"
-echo "New branch:  $branch"
+# Jira Data variables
+SUMMARY=""
+ISSUE_TYPE=""
+BRANCH_TYPE=""
 
-if git show-ref --verify --quiet "refs/heads/${branch}"; then
-  echo "error: local branch already exists: $branch"
-  exit 1
+if [[ $NO_JIRA -eq 1 ]]; then
+  if [[ -z "$MANUAL_TITLE" ]]; then
+    die "Manual title is required when using --no-jira mode."
+  fi
+  SUMMARY="$MANUAL_TITLE"
+  ISSUE_TYPE="N/A"
+  BRANCH_TYPE="${TYPE_OVERRIDE:-$DEFAULT_TYPE}"
+else
+  # Ensure Jira credentials are set
+  if [[ -z "${JIRA_BASE_URL:-}" || -z "${JIRA_EMAIL:-}" || -z "${JIRA_API_TOKEN:-}" ]]; then
+    die "Jira environment variables are not set. Require JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN."
+  fi
+
+  echo "Fetching Jira issue $TICKET..."
+  
+  # Base URL without trailing slash
+  JIRA_API="${JIRA_BASE_URL%/}/rest/api/3"
+  
+  # Auth header
+  AUTH_B64=$(printf "%s:%s" "${JIRA_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\n')
+
+  # Fetch issue
+  RESPONSE=$(curl -s -w "\n%{http_code}" -H "Authorization: Basic ${AUTH_B64}" -H "Accept: application/json" "${JIRA_API}/issue/${TICKET}")
+  HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+  BODY=$(echo "$RESPONSE" | sed '$ d')
+
+  if [[ "$HTTP_CODE" -ne 200 ]]; then
+    die "Failed to fetch Jira ticket $TICKET. HTTP $HTTP_CODE."
+  fi
+
+  JIRA_SUMMARY=$(echo "$BODY" | jq -r '.fields.summary // empty')
+  JIRA_ISSUE_TYPE=$(echo "$BODY" | jq -r '.fields.issuetype.name // empty')
+
+  if [[ -z "$JIRA_SUMMARY" || -z "$JIRA_ISSUE_TYPE" ]]; then
+    die "Could not extract summary or issue type from Jira response."
+  fi
+
+  SUMMARY="${MANUAL_TITLE:-$JIRA_SUMMARY}"
+  ISSUE_TYPE="$JIRA_ISSUE_TYPE"
+  BRANCH_TYPE="${TYPE_OVERRIDE:-$(map_issue_type "$JIRA_ISSUE_TYPE")}"
 fi
 
-git switch --create "$branch" "origin/${base_branch}"
+SLUG=$(slugify "$SUMMARY")
+BRANCH_NAME="${BRANCH_TYPE}/${TICKET}-${SLUG}"
+JIRA_URL="${JIRA_BASE_URL%/}/browse/${TICKET}"
 
+echo ""
+echo "Repository:  ${REPO_NAME}"
+echo "Ticket:      ${TICKET}"
+echo "Summary:     ${SUMMARY}"
+echo "Issue type:  ${ISSUE_TYPE}"
+echo "Base branch: ${BASE_BRANCH}"
+echo "New branch:  ${BRANCH_NAME}"
+if [[ $NO_JIRA -eq 0 ]]; then
+  echo "Jira:        ${JIRA_URL}"
+fi
+echo ""
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "[Dry Run] Would create branch $BRANCH_NAME from origin/${BASE_BRANCH}"
+  if [[ $NO_JIRA -eq 0 && $NO_TRANSITION -eq 0 ]]; then
+    TARGET_TRANSITION="${CONF_TRANSITION:-$DEFAULT_TRANSITION}"
+    echo "[Dry Run] Would transition ticket to '${TARGET_TRANSITION}'"
+  fi
+  if [[ $NO_JIRA -eq 0 && $NO_COMMENT -eq 0 ]]; then
+    echo "[Dry Run] Would add comment to ticket"
+  fi
+  echo "[Dry Run] Finished."
+  exit 0
+fi
+
+# Create branch
+echo "Creating branch..."
+if ! git checkout -b "${BRANCH_NAME}" "origin/${BASE_BRANCH}" >/dev/null 2>&1; then
+  die "Failed to create branch ${BRANCH_NAME} from origin/${BASE_BRANCH}."
+fi
 echo "Branch created successfully."
+
+if [[ $NO_JIRA -eq 0 ]]; then
+  TARGET_TRANSITION="${CONF_TRANSITION:-$DEFAULT_TRANSITION}"
+  
+  if [[ $NO_TRANSITION -eq 0 ]]; then
+    echo "Fetching transitions..."
+    TRANSITIONS_RESP=$(curl -s -w "\n%{http_code}" -H "Authorization: Basic ${AUTH_B64}" -H "Accept: application/json" "${JIRA_API}/issue/${TICKET}/transitions")
+    T_HTTP_CODE=$(echo "$TRANSITIONS_RESP" | tail -n1)
+    T_BODY=$(echo "$TRANSITIONS_RESP" | sed '$ d')
+
+    if [[ "$T_HTTP_CODE" -eq 200 ]]; then
+      TRANSITION_ID=$(echo "$T_BODY" | jq -r --arg name "$TARGET_TRANSITION" '.transitions[] | select(.name | ascii_downcase == ($name | ascii_downcase)) | .id')
+      if [[ -n "$TRANSITION_ID" ]]; then
+        # Perform transition
+        TRANSITION_POST_RESP=$(curl -s -w "\n%{http_code}" -X POST -H "Authorization: Basic ${AUTH_B64}" -H "Content-Type: application/json" -H "Accept: application/json" -d "{\"transition\": {\"id\": \"${TRANSITION_ID}\"}}" "${JIRA_API}/issue/${TICKET}/transitions")
+        TP_HTTP_CODE=$(echo "$TRANSITION_POST_RESP" | tail -n1)
+        if [[ "$TP_HTTP_CODE" -eq 204 ]]; then
+          echo "Jira ticket moved to ${TARGET_TRANSITION}."
+        else
+          echo "Warning: Failed to transition Jira ticket. HTTP $TP_HTTP_CODE"
+        fi
+      else
+        echo "Warning: Transition '${TARGET_TRANSITION}' not found for current issue state."
+        echo "Available transitions:"
+        echo "$T_BODY" | jq -r '.transitions[].name' | sed 's/^/ - /'
+      fi
+    else
+      echo "Warning: Failed to fetch transitions. HTTP $T_HTTP_CODE"
+    fi
+  fi
+
+  DO_COMMENT=1
+  if [[ "$CONF_ADD_COMMENT" == "false" || $NO_COMMENT -eq 1 ]]; then
+    DO_COMMENT=0
+  fi
+
+  if [[ $DO_COMMENT -eq 1 ]]; then
+    COMMENT_PAYLOAD=$(jq -n --arg branch "$BRANCH_NAME" '{
+      "body": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ("Started work on branch " + $branch)
+              }
+            ]
+          }
+        ]
+      }
+    }')
+    
+    COMMENT_RESP=$(curl -s -w "\n%{http_code}" -X POST -H "Authorization: Basic ${AUTH_B64}" -H "Content-Type: application/json" -H "Accept: application/json" -d "$COMMENT_PAYLOAD" "${JIRA_API}/issue/${TICKET}/comment")
+    C_HTTP_CODE=$(echo "$COMMENT_RESP" | tail -n1)
+    if [[ "$C_HTTP_CODE" -eq 201 ]]; then
+      echo "Comment added to Jira ticket."
+    else
+      echo "Warning: Failed to add comment. HTTP $C_HTTP_CODE"
+    fi
+  fi
+
+  if [[ $OPEN_ISSUE -eq 1 ]]; then
+    if command -v open >/dev/null 2>&1; then
+      echo "Opening Jira issue..."
+      open "$JIRA_URL"
+    else
+      echo "Warning: 'open' command not found, cannot open Jira issue."
+    fi
+  fi
+fi
+
+echo ""
+echo "Next:"
+echo "git push -u origin ${BRANCH_NAME}"

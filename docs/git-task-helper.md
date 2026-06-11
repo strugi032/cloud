@@ -1,219 +1,154 @@
 # Git Task Helper
 
 ## Purpose
+The `git-task` helper streamlines the process of starting work on a new task. It integrates with Jira to automatically fetch issue details, derive appropriate branch types, create a correctly formatted local branch, and update the Jira ticket status and comments.
 
-Starting work on a Jira ticket often involves repeated manual steps:
+## What It Does
+When run, the helper:
+1. Verifies the environment (Git repository, `origin` remote, dependencies).
+2. Fetches the latest remote refs.
+3. Retrieves ticket details from the Jira Cloud REST API.
+4. Derives the branch type from the Jira issue type.
+5. Creates a local Git branch originating from the repository's base branch.
+6. Transitions the Jira ticket to `In Progress` (or a configured state).
+7. Adds a comment to the Jira ticket with the new branch name.
 
-* fetch latest changes
-* switch to the default branch
-* create a correctly named branch
-* include the Jira ticket ID in the branch name
-* keep branch naming consistent across repositories
+## Requirements
+To use `git-task`, you need:
+- `git`
+- `curl`
+- `jq`
+- A Jira Cloud account
+- A Jira API token
+- Permission to browse issues, transition issues, and add comments.
 
-The `git-task` helper makes this process repeatable and less error-prone.
-
-## Example Usage
-
-```bash
-git-task DEVOPS-123 "add terraform validation"
-```
-
-Creates:
-
-```text
-feature/DEVOPS-123-add-terraform-validation
-```
-
-```bash
-git-task DEVOPS-248 "fix github actions cache"
-```
-
-Creates:
-
-```text
-feature/DEVOPS-248-fix-github-actions-cache
-```
+## Jira Configuration
+The helper uses environment variables to authenticate with Jira. Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
 ```bash
-git-task DEVOPS-301 "document jenkins recovery"
+export JIRA_BASE_URL="https://example.atlassian.net"
+export JIRA_EMAIL="user@example.com"
+export JIRA_API_TOKEN="local-api-token"
 ```
 
-Creates:
+> [!WARNING]
+> Do not commit Jira API tokens, credentials, or personal configuration into the repository. Keep them in a local shell profile, password manager, or approved secret store.
 
-```text
-docs/DEVOPS-301-document-jenkins-recovery
-```
-
-## Why `git-task` Instead of `git task`
-
-Using `git-task` makes it clear that this is a custom local helper script, not a built-in Git command. This reduces confusion and clarifies that the helper is a personal workflow script.
-
-## Optional Git Subcommand Usage
-
-If the executable named `git-task` is available in your `$PATH`, Git can also run it as an optional subcommand.
-
-This allows the command to be used as:
-
-```bash
-git task DEVOPS-123 "add terraform validation"
-```
-
-This behavior is optional and relies on Git's standard custom command discovery.
-
-## Configuration Model
-
-Configuration values are determined in this order:
-
-1. detect the default branch from `origin/HEAD`
-2. use sensible defaults
-3. allow optional overrides from global Git config
-
-Default behavior:
-
-```text
-base branch: detected from origin/HEAD, fallback to main or master
-branch prefix: feature
-include title in branch name: true
-```
-
-## Expected Behavior
-
-The command:
-
-```bash
-git-task DEVOPS-123 "add terraform validation"
-```
-
-should:
-
-* verify that the current directory is inside a Git repository
-* detect the repository name from `origin`
-* fetch from origin before detecting remote branches
-* detect the default base branch
-* read optional global config for that repository
-* fetch latest changes
-* check out a new branch from the remote base branch using `git switch`
-* slugify the short description
-* print what it did
-
-It should not:
-
-* push the branch automatically
-* modify Jira automatically
-* delete branches
-* run destructive commands
-* require repository-local config files
-
-## Installation
-
-```bash
-mkdir -p ~/bin
-cp scripts/git-task ~/bin/git-task
-chmod +x ~/bin/git-task
-```
-
-Ensure `~/bin` is in `$PATH`:
-
-```bash
-export PATH="$HOME/bin:$PATH"
-```
-
-## Global Config Examples
-
-Example for normal feature work:
-
-```ini
-[task "kube-image-inventory"]
-	baseBranch = main
-	branchPrefix = feature
-	includeTitle = true
-```
-
-Example for documentation repository:
+## Global Git Config
+You can configure repository-specific behavior globally using `git config`. This is useful for repositories that have different base branches or require different Jira transition names.
 
 ```ini
 [task "cloud"]
 	baseBranch = main
-	branchPrefix = docs
-	includeTitle = true
+	jiraTransition = In Progress
+	addComment = true
+
+[task "kube-image-inventory"]
+	baseBranch = main
+	jiraTransition = In Progress
+	addComment = true
+
+[task]
+	defaultType = feature
 ```
 
-Example for older repository using `master`:
-
-```ini
-[task "legacy-project"]
-	baseBranch = master
-	branchPrefix = bugfix
-	includeTitle = false
+## Branch Naming
+The generated branch will follow this format:
+```text
+<type>/<ticket-key>-<slugified-title>
 ```
+
+Examples:
+- `feature/DEVOPS-123-add-terraform-validation`
+- `bugfix/DEVOPS-248-fix-github-actions-cache`
+- `docs/DEVOPS-301-document-jenkins-recovery`
+- `hotfix/DEVOPS-500-fix-production-deploy`
+- `chore/DEVOPS-600-update-dependencies`
+
+## Branch Type Mapping
+The branch `<type>` represents the kind of work and is automatically derived from the Jira issue type:
+
+- `Bug` -> `bugfix`
+- `Story` -> `feature`
+- `Task` -> `feature`
+- `Improvement` -> `feature`
+- `Incident` -> `hotfix`
+- `Documentation` -> `docs`
+
+If the issue type is not mapped, it defaults to `feature` (or your configured `task.defaultType`). You can always override this using the `--type` flag.
 
 ## Usage Examples
 
+**Default Jira-driven mode:**
 ```bash
-git-task DEVOPS-410 "add runbook template"
+git-task DEVOPS-123
 ```
 
-Creates:
-
-```text
-feature/DEVOPS-410-add-runbook-template
+**Manual title override:**
+```bash
+git-task DEVOPS-123 "add terraform validation"
 ```
+
+**Manual branch type override:**
+```bash
+git-task DEVOPS-123 --type docs
+```
+
+**Open Jira ticket after processing:**
+```bash
+git-task DEVOPS-123 --open
+```
+
+## How It Works
+The helper dynamically determines the base branch by checking your global `git config` for the repository. If not configured, it checks `origin/HEAD`, and falls back to `main` or `master`. It then talks to Jira via the REST API v3 using Atlassian Document Format (ADF) to add comments and transitions the issue state based on the name.
+
+## Dry Run Mode
+You can see what the tool would do without making any changes to your local Git repository or remote Jira instance:
 
 ```bash
-git-task DEVOPS-411 "improve adr template"
+git-task DEVOPS-123 --dry-run
 ```
 
-With `cloud` configured to use `docs` prefix, creates:
-
-```text
-docs/DEVOPS-411-improve-adr-template
-```
+## No Jira Mode
+If you do not have Jira access or just want to create a branch without making API calls, use `--no-jira`. A manual title must be provided.
 
 ```bash
-git-task DEVOPS-500 "fix deployment pipeline"
+git-task --no-jira DEVOPS-123 "add terraform validation"
 ```
-
-Creates:
-
-```text
-feature/DEVOPS-500-fix-deployment-pipeline
-```
-
-## Limitations
-
-* assumes the repository has an `origin` remote
-* creates local branches only
-* does not push automatically
-* does not validate whether the Jira ticket exists
-* does not update Jira
-* repositories with unusual branching rules may need global Git config overrides
 
 ## Safety Notes
+- The helper creates only a **local branch**.
+- It **does not push** automatically.
+- It **does not create pull requests**.
+- It **does not delete branches**.
+- It **does not run destructive Git commands**.
+- Jira mutations can be bypassed with `--no-transition` and `--no-comment`.
+- `--dry-run` should be used when testing your configuration.
+- Transition names depend on your specific Jira workflow.
+- Users should review the generated branch name before pushing to the remote.
 
-* does not delete branches
-* does not push automatically
-* does not run destructive commands
-* prints what it is going to create
-* user should review the branch name before pushing
+## Limitations
+- Assumes Jira Cloud REST API v3.
+- Assumes issue keys format like `DEVOPS-123`.
+- Assumes an `origin` remote exists.
+- Requires `curl` and `jq` installed on your machine.
+- The targeted transition name must be available for the issue's current status.
+- Does not automatically support every custom Jira workflow.
+- Does not support multiple Jira instances automatically.
+- Does not assign tickets unless added later.
+- Does not create pull requests or push branches.
 
-## Optional Jira Integration
-
-Jira integration can be added later, but should not be enabled by default.
-
-Possible future improvements:
-
-* validate ticket exists
-* read ticket title
-* print ticket URL
-* move ticket to “In Progress”
-
-This is not enabled by default because different teams use different Jira workflows, statuses, permissions, and project keys.
+## Future Improvements
+- Assign issue to current user.
+- Open the Jira ticket in browser.
+- Create pull request after first push.
+- Support GitHub/GitLab/Bitbucket PR creation.
+- Cache Jira issue summaries.
+- Shell completion for assigned Jira tickets.
+- Custom Jira issue type mappings.
+- Support multiple Jira instances.
+- Support GitHub Issues or Linear.
+- Support `git-task finish` to move ticket to review.
 
 ## Summary
-
-* `git-task` is a small local Git helper
-* it starts work on Jira-style tasks consistently
-* it avoids repository-local config files
-* it uses default branch detection
-* it supports optional global Git config overrides
-* it can be extended later, but should stay simple
+The `git-task` helper saves time by automating boilerplate branch creation and Jira updates. It is designed to be safe, requiring manual review and pushing, while keeping external configuration out of your project repositories.
