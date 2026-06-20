@@ -20,5 +20,12 @@ python3 backup.py ~/Documents ~/Backups --exclude .tmp --exclude .log
 The script refuses to place the destination inside the source because that can
 cause backups to copy themselves recursively.
 
+Each file's size and nanosecond modification time are checked before and after
+copying. A file that changes is copied once more; if it changes again, the
+backup fails and keeps its `.incomplete` suffix. This catches most concurrent
+writes, but it is not a consistent snapshot of the whole directory. Pause the
+writer or use filesystem snapshots or an application's native backup command
+when cross-file consistency is required.
+
 Topics demonstrated: `pathlib`, recursive traversal, argument parsing,
-timestamps, safety validation, and `shutil.copy2`.
+timestamps, safety validation, best-effort change detection, and `shutil.copy2`.
