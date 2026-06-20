@@ -1,56 +1,17 @@
 #!/usr/bin/env python3
-"""git-task: create a local Git branch for a Jira ticket.
-
-Written: 2026-06-13
-
-What this script does:
-- Runs from inside an existing Git repository.
-- Reads the repository's `origin` remote and base branch.
-- Optionally reads a Jira ticket summary and issue type.
-- Builds a branch name like `feature/DEVOPS-123-add-terraform-validation`.
-- Creates and checks out a local branch from `origin/<base-branch>`.
-- Optionally moves the Jira ticket to the configured status.
-- Optionally adds a Jira comment with the created branch name.
-- Prints the push command, but does not push automatically.
-
-Disclaimer:
-This is a local workflow helper, not a production-grade release tool. Use it at
-your own risk. Review the output before using it on important repositories or
-real Jira tickets. The script can create local branches and can modify Jira
-tickets when not run with `--dry-run`, `--no-jira`, `--no-transition`, or
-`--no-comment`. The author and repository maintainers are not responsible for
-incorrect branches, Jira transitions, comments, workflow disruption, data loss,
-or other issues caused by using or modifying this script.
-
-Example commands:
-  git-task DEVOPS-123
-  git-task DEVOPS-123 "add terraform validation"
-  git-task --type docs DEVOPS-123
-  git-task --dry-run DEVOPS-123
-  git-task --no-jira DEVOPS-123 "add terraform validation"
-  git-task --no-transition --no-comment DEVOPS-123
-"""
+"""Create a local Git branch for a Jira ticket."""
 
 from __future__ import annotations
 
 import argparse
 import os
 import re
+import subprocess
 import sys
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-try:
-    from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-except ImportError:
-    print(
-        "Error: missing Python package 'GitPython'. Install dependencies with: "
-        "python3 -m pip install GitPython jira",
-        file=sys.stderr,
-    )
-    sys.exit(1)
 
 
 DEFAULT_TRANSITION = "In Progress"
@@ -75,29 +36,14 @@ class Config:
     default_type: str
 
 
-@dataclass(frozen=True)
-class IssueInfo:
-    summary: str
-    issue_type: str
-    issue: Any | None = None
-
-
 def die(message: str) -> None:
     print(f"Error: {message}", file=sys.stderr)
     sys.exit(1)
 
 
-def warn(message: str) -> None:
-    print(f"Warning: {message}", file=sys.stderr)
-
-
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower())
     return slug.strip("-")
-
-
-def branch_type_for(issue_type: str, default_type: str) -> str:
-    return ISSUE_TYPE_TO_BRANCH_TYPE.get(issue_type.lower(), default_type)
 
 
 def parse_bool(value: str | None, default: bool = True) -> bool:
@@ -110,7 +56,7 @@ def parse_bool(value: str | None, default: bool = True) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
 
-    warn(f"Invalid boolean Git config value '{value}', using {default}.")
+    print(f"Warning: Invalid boolean Git config value '{value}', using {default}.", file=sys.stderr)
     return default
 
 
@@ -142,38 +88,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_repo() -> Repo:
+def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     try:
-        return Repo(search_parent_directories=True)
-    except (InvalidGitRepositoryError, NoSuchPathError):
-        die("Not inside a Git repository.")
+        result = subprocess.run(["git", *args], text=True, capture_output=True)
+    except FileNotFoundError:
+        die("Git is not installed or not on PATH.")
+    if check and result.returncode:
+        die(result.stderr.strip() or f"Git command failed: git {' '.join(args)}")
+    return result
 
 
-def origin_remote(repo: Repo):
-    for remote in repo.remotes:
-        if remote.name == "origin":
-            return remote
-    die("No 'origin' remote exists.")
+def config_value(key: str) -> str | None:
+    result = run_git("config", "--get", key, check=False)
+    return result.stdout.strip() or None
 
 
-def config_value(repo: Repo, key: str) -> str | None:
-    """Read a Git config value using keys such as task.defaultType.
-
-    GitPython expects section and option separately. Splitting once preserves
-    quoted sections like task "cloud".jiraTransition.
-    """
-    with repo.config_reader() as reader:
-        try:
-            return reader.get_value(*key.split(".", 1))
-        except Exception:
-            return None
-
-
-def load_config(repo: Repo, repo_name: str) -> Config:
-    default_type = config_value(repo, "task.defaultType") or DEFAULT_TYPE
-    transition = config_value(repo, f'task "{repo_name}".jiraTransition') or DEFAULT_TRANSITION
-    base_branch = config_value(repo, f'task "{repo_name}".baseBranch')
-    add_comment_raw = config_value(repo, f'task "{repo_name}".addComment')
+def load_config(repo_name: str) -> Config:
+    default_type = config_value("task.defaultType") or DEFAULT_TYPE
+    transition = config_value(f"task.{repo_name}.jiraTransition") or DEFAULT_TRANSITION
+    base_branch = config_value(f"task.{repo_name}.baseBranch")
+    add_comment_raw = config_value(f"task.{repo_name}.addComment")
 
     return Config(
         base_branch=base_branch,
@@ -183,27 +117,17 @@ def load_config(repo: Repo, repo_name: str) -> Config:
     )
 
 
-def remote_branch_exists(repo: Repo, branch_name: str) -> bool:
-    ref_name = f"origin/{branch_name}"
-    return any(ref.name == ref_name for ref in repo.remotes.origin.refs)
-
-
-def detect_base_branch(repo: Repo, config: Config, repo_name: str) -> str:
+def detect_base_branch(config: Config, repo_name: str) -> str:
     if config.base_branch:
         return config.base_branch
 
-    # Prefer the remote's advertised default branch, then fall back to common
-    # branch names so new repositories work without per-repo configuration.
-    origin_head = next((ref for ref in repo.remotes.origin.refs if ref.name == "origin/HEAD"), None)
-    if origin_head is not None:
-        remote_name = getattr(origin_head.reference, "remote_head", "")
-        if remote_name:
-            return remote_name
+    origin_head = run_git("symbolic-ref", "--short", "refs/remotes/origin/HEAD", check=False)
+    if origin_head.returncode == 0:
+        return origin_head.stdout.strip().removeprefix("origin/")
 
-    if remote_branch_exists(repo, "main"):
-        return "main"
-    if remote_branch_exists(repo, "master"):
-        return "master"
+    for name in ("main", "master"):
+        if run_git("show-ref", "--verify", "--quiet", f"refs/remotes/origin/{name}", check=False).returncode == 0:
+            return name
 
     die(f"Could not detect base branch. Set one using: git config task.{repo_name}.baseBranch <branch>")
 
@@ -225,15 +149,10 @@ def load_jira_client() -> Any:
     if missing:
         die(f"Jira environment variables are not set. Missing: {', '.join(missing)}.")
 
-    # Import Jira lazily so --no-jira can still work when the Jira package is
-    # not installed. GitPython is always required because the command is Git-first.
     try:
         from jira import JIRA, JIRAError
     except ImportError:
-        die(
-            "Missing Python package 'jira'. Install dependencies with: "
-            "python3 -m pip install GitPython jira"
-        )
+        die("Missing Python package 'jira'. Install it with: python3 -m pip install jira")
 
     try:
         return JIRA(server=base_url, basic_auth=(email, token))
@@ -252,7 +171,7 @@ def jira_error_message(exc: Exception) -> str:
     return str(exc)
 
 
-def load_issue(jira_client: Any, ticket: str) -> IssueInfo:
+def load_issue(jira_client: Any, ticket: str) -> tuple[Any, str, str]:
     try:
         issue = jira_client.issue(ticket)
     except Exception as exc:
@@ -265,27 +184,17 @@ def load_issue(jira_client: Any, ticket: str) -> IssueInfo:
     if not summary or not issue_type:
         die("Could not read Jira summary or issue type.")
 
-    return IssueInfo(summary=summary, issue_type=issue_type, issue=issue)
+    return issue, summary, issue_type
 
 
-def local_branch_exists(repo: Repo, branch_name: str) -> bool:
-    return any(head.name == branch_name for head in repo.heads)
-
-
-def create_branch(repo: Repo, branch_name: str, base_branch: str) -> None:
-    if local_branch_exists(repo, branch_name):
+def create_branch(branch_name: str, base_branch: str) -> None:
+    if run_git("show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}", check=False).returncode == 0:
         die(f"Local branch '{branch_name}' already exists.")
 
-    base_ref_name = f"origin/{base_branch}"
-    base_ref = next((ref for ref in repo.remotes.origin.refs if ref.name == base_ref_name), None)
-    if base_ref is None:
-        die(f"Base branch '{base_ref_name}' was not found.")
-
-    try:
-        new_branch = repo.create_head(branch_name, base_ref)
-        new_branch.checkout()
-    except GitCommandError as exc:
-        die(f"Failed to create branch {branch_name} from {base_ref_name}: {exc}")
+    base_ref = f"refs/remotes/origin/{base_branch}"
+    if run_git("show-ref", "--verify", "--quiet", base_ref, check=False).returncode:
+        die(f"Base branch 'origin/{base_branch}' was not found.")
+    run_git("switch", "--create", branch_name, f"origin/{base_branch}")
 
 
 def find_transition(jira_client: Any, issue: Any, transition_name: str) -> dict[str, Any] | None:
@@ -341,18 +250,51 @@ def add_comment(jira_client: Any, issue: Any, ticket: str, transition_name: str,
         return False
 
 
-def print_summary(
-    repo_name: str,
-    ticket: str,
-    summary: str,
-    issue_type: str,
-    base_branch: str,
-    branch_name: str,
-    jira_url: str | None,
-) -> None:
-    print("")
-    print(f"Repository:  {repo_name}")
-    print(f"Ticket:      {ticket}")
+def main() -> int:
+    args = parse_args()
+
+    if args.no_jira and not args.manual_title:
+        die("Manual title is required when using --no-jira mode.")
+
+    repo_root = Path(run_git("rev-parse", "--show-toplevel").stdout.strip())
+    repo_name = repo_root.name
+    run_git("remote", "get-url", "origin")
+    config = load_config(repo_name)
+
+    # A fetch updates remote-tracking refs, so it is intentionally skipped in
+    # dry-run mode even though normal mode fetches before branch detection.
+    if not args.dry_run:
+        print("Fetching latest remote refs...")
+        run_git("fetch", "origin", "--prune")
+
+    base_branch = detect_base_branch(config, repo_name)
+
+    jira_client = None
+    issue = None
+    jira_url = None
+
+    if args.no_jira:
+        summary = args.manual_title
+        issue_type = "N/A"
+        branch_type = args.type_override or config.default_type
+    else:
+        jira_client = load_jira_client()
+        print(f"Fetching Jira issue {args.ticket}...")
+        issue, jira_summary, issue_type = load_issue(jira_client, args.ticket)
+        summary = args.manual_title or jira_summary
+        branch_type = args.type_override or ISSUE_TYPE_TO_BRANCH_TYPE.get(issue_type.lower(), config.default_type)
+        jira_url = f"{os.environ['JIRA_BASE_URL'].rstrip('/')}/browse/{args.ticket}"
+
+    slug = slugify(summary)
+    if not slug:
+        die("Generated branch title slug is empty.")
+
+    branch_name = f"{branch_type}/{args.ticket}-{slug}"
+    should_transition = not args.no_jira and not args.no_transition
+    should_comment = not args.no_jira and not args.no_comment and config.add_comment
+
+    print(f"\nRepository:  {repo_name}")
+    print(f"Ticket:      {args.ticket}")
     print(f"Summary:     {summary}")
     print(f"Issue type:  {issue_type}")
     print(f"Base branch: {base_branch}")
@@ -361,115 +303,30 @@ def print_summary(
         print(f"Jira URL:    {jira_url}")
     print("")
 
-
-def print_dry_run(
-    branch_name: str,
-    base_branch: str,
-    transition: str,
-    should_transition: bool,
-    should_comment: bool,
-) -> None:
-    print(f"[Dry Run] Would create branch {branch_name} from origin/{base_branch}")
-    if should_transition:
-        print(f"[Dry Run] Would transition ticket to '{transition}'")
-    if should_comment:
-        print("[Dry Run] Would add comment to ticket")
-    print("[Dry Run] Final push command would be:")
-    print(f"git push -u origin {branch_name}")
-    print("[Dry Run] Browser will not be opened in dry-run mode.")
-    print("[Dry Run] Finished.")
-
-
-def main() -> int:
-    args = parse_args()
-
-    if args.no_jira and not args.manual_title:
-        die("Manual title is required when using --no-jira mode.")
-
-    repo = load_repo()
-    origin = origin_remote(repo)
-    repo_root = Path(repo.working_tree_dir or os.getcwd())
-    repo_name = repo_root.name
-    config = load_config(repo, repo_name)
-
-    # A fetch updates remote-tracking refs, so it is intentionally skipped in
-    # dry-run mode even though normal mode fetches before branch detection.
-    if not args.dry_run:
-        print("Fetching latest remote refs...")
-        try:
-            origin.fetch(prune=True)
-        except GitCommandError as exc:
-            die(f"Failed to fetch latest remote refs: {exc}")
-
-    base_branch = detect_base_branch(repo, config, repo_name)
-
-    jira_client = None
-    issue_info: IssueInfo
-    jira_url = None
-
-    if args.no_jira:
-        # In no-Jira mode the user supplies the branch title because there is no
-        # issue lookup to provide a summary.
-        issue_info = IssueInfo(summary=args.manual_title, issue_type="N/A")
-        branch_type = args.type_override or config.default_type
-    else:
-        jira_client = load_jira_client()
-        print(f"Fetching Jira issue {args.ticket}...")
-        issue_info = load_issue(jira_client, args.ticket)
-        issue_info = IssueInfo(
-            summary=args.manual_title or issue_info.summary,
-            issue_type=issue_info.issue_type,
-            issue=issue_info.issue,
-        )
-        branch_type = args.type_override or branch_type_for(issue_info.issue_type, config.default_type)
-        jira_url = f"{os.environ['JIRA_BASE_URL'].rstrip('/')}/browse/{args.ticket}"
-
-    slug = slugify(issue_info.summary)
-    if not slug:
-        die("Generated branch title slug is empty.")
-
-    branch_name = f"{branch_type}/{args.ticket}-{slug}"
-    should_transition = not args.no_jira and not args.no_transition
-    should_comment = not args.no_jira and not args.no_comment and config.add_comment
-
-    print_summary(
-        repo_name=repo_name,
-        ticket=args.ticket,
-        summary=issue_info.summary,
-        issue_type=issue_info.issue_type,
-        base_branch=base_branch,
-        branch_name=branch_name,
-        jira_url=jira_url,
-    )
-
     if args.dry_run:
-        # Nothing below this point is allowed in dry-run mode: no branch create,
-        # no checkout, no Jira mutation, and no browser open.
-        print_dry_run(
-            branch_name=branch_name,
-            base_branch=base_branch,
-            transition=config.transition,
-            should_transition=should_transition,
-            should_comment=should_comment,
-        )
+        print(f"[Dry Run] Would create branch {branch_name} from origin/{base_branch}")
+        if should_transition:
+            print(f"[Dry Run] Would transition ticket to '{config.transition}'")
+        if should_comment:
+            print("[Dry Run] Would add comment to ticket")
+        print(f"[Dry Run] Final push command would be:\ngit push -u origin {branch_name}")
+        print("[Dry Run] Browser will not be opened in dry-run mode.\n[Dry Run] Finished.")
         return 0
 
     print("Creating branch...")
-    create_branch(repo, branch_name, base_branch)
+    create_branch(branch_name, base_branch)
     print("Branch created successfully.")
 
     jira_problem = False
-    if jira_client and issue_info.issue:
-        # Jira updates happen after branch creation. If they fail, keep the
-        # branch and return a non-zero status with manual follow-up instructions.
+    if jira_client and issue:
         if should_transition:
             jira_problem = not transition_issue(
-                jira_client, issue_info.issue, args.ticket, config.transition, branch_name
+                jira_client, issue, args.ticket, config.transition, branch_name
             )
 
         if should_comment:
             jira_problem = not add_comment(
-                jira_client, issue_info.issue, args.ticket, config.transition, branch_name
+                jira_client, issue, args.ticket, config.transition, branch_name
             ) or jira_problem
 
         if args.open:

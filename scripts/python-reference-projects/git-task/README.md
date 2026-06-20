@@ -36,8 +36,9 @@ python3 -m pip install -r requirements.txt
 
 The Python implementation uses:
 
-- `GitPython` for Git operations
 - `jira` for Jira operations
+
+Git operations use the installed `git` command directly.
 
 It does not require `curl` or `jq`.
 
@@ -267,14 +268,3 @@ The final push command is still printed when possible.
 - It does not run destructive Git commands.
 - Jira mutations can be disabled with `--no-transition` and `--no-comment`.
 - Use `--dry-run` when checking configuration.
-
-## Future Improvements
-
-- Assign issue to current user.
-- Create a pull request after first push.
-- Support GitHub, GitLab, or Bitbucket pull request creation.
-- Cache Jira issue summaries.
-- Add shell completion.
-- Support custom Jira issue type mappings.
-- Support multiple Jira instances.
-- Support `git-task finish` to move tickets to review.
