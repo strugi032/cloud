@@ -27,5 +27,9 @@ writes, but it is not a consistent snapshot of the whole directory. Pause the
 writer or use filesystem snapshots or an application's native backup command
 when cross-file consistency is required.
 
+## How it works
+
+![Backup process](backup.png)
+
 Topics demonstrated: `pathlib`, recursive traversal, argument parsing,
 timestamps, safety validation, best-effort change detection, and `shutil.copy2`.
