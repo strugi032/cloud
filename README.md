@@ -24,7 +24,10 @@ This repository includes a small Jira-aware Git helper for starting work on tick
 
 See:
 
+- `scripts/python-reference-projects/backup-utility/`
 - `scripts/python-reference-projects/git-task/`
+- `scripts/python-reference-projects/internal-site-monitor/`
+- `scripts/python-reference-projects/log-analyzer/`
 
 ## Related Repositories
 
