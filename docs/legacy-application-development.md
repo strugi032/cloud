@@ -1,233 +1,351 @@
-# AI-Assisted Legacy Application Development
+# AI-Assisted Development of Existing Applications
 
-This document applies the principles from `ai-assisted-development.md` to maintaining, extending, and modernizing existing applications.
+## 1. Purpose
 
-It is for situations where an engineer or AI agent must work in a repository with incomplete documentation, older patterns, fragile integrations, hidden operational assumptions, or previous feature work that should not be rediscovered from scratch.
+This guide describes a practical workflow for using an AI coding agent while extending an existing production application. It is meant for work that continues across multiple tickets, multiple AI sessions, or more than one engineer.
 
-The goal is practical: understand the system before changing it, keep the scope small, validate behavior, and preserve useful context for the next engineer or AI session.
+The main objective is to preserve development context between:
+- Feature A and Feature B
+- one engineer and another engineer
+- one AI session and a later AI session
 
-Common examples:
-- replacing an obsolete integration
-- migrating between APIs
-- refactoring an internal tool
-- extending an operational workflow
-- improving reliability around an existing job or service
+AI chat history must not be the only place where project knowledge exists. Important context should live in the repository, close to the code, so future work can start from verified facts instead of repeating a full repository investigation.
 
-## 1. AI-Assisted Discovery
+This is not a greenfield architecture guide, a modernization framework, or a reason to document every trivial change. The preferred approach is the smallest safe change that fits the current application.
 
-The AI agent should inspect the context that explains how the system works today:
-- repository instructions
-- README files
-- relevant modules
-- tests
-- configuration
-- integration code
-- ADRs
-- changelog entries
-- feature notes
-- operational documentation
+## 2. Example Scenario
 
-Expected output:
-- short system summary
-- relevant files and modules
-- main data or request flow
-- integration points
-- existing tests
-- assumptions
-- unknowns
-- risks
+The example used throughout this guide is an `Internal ChatOps Bot` that communicates with an incident-management provider.
 
-Do not modify files during discovery.
+The bot currently supports operations such as:
+- retrieving the current on-call engineer
+- working with on-call schedules or overrides
+- starting a temporary maintenance or downtime window during deployments
+- suppressing selected notifications while maintenance is active
+- restoring normal notification behavior after deployment
+- displaying basic schedule or alert information
 
-The engineer must verify important conclusions instead of assuming the repository summary is correct. In legacy systems, a summary can miss behavior hidden in scheduled jobs, shell scripts, deployment configuration, or manual support steps.
+The application currently uses `Provider A`. The organization needs to introduce `Provider B`. During the migration, both providers must work simultaneously.
 
-For integrations, document the useful shape of the dependency:
-- authentication method
-- credential ownership
-- secret locations or references
-- required permissions
-- rate limits
-- payload differences
-- timeout behavior
-- retry behavior
-- idempotency expectations
-- fallback or rollback options
+The migration should:
+- preserve all existing `Provider A` behavior
+- introduce `Provider B` incrementally
+- allow different teams or environments to use different providers
+- preserve existing commands and user-facing output where possible
+- follow the current repository structure
+- follow the existing coding style
+- reuse existing libraries and patterns
+- avoid unrelated refactoring
+- avoid introducing a new framework
+- avoid creating a new architecture without a demonstrated need
+- preserve existing configuration and secret-handling conventions
+- avoid logging credentials, tokens, personal data, or complete external API payloads
+- preserve deployment and rollback behavior
+- allow configuration-based rollback to `Provider A` where practical
 
-Never store credential values in documentation.
+The correct approach is not necessarily the theoretically cleanest architecture. The right first step is the smallest coherent change that protects existing behavior and makes the next ticket easier.
 
-## 2. AI-Assisted Planning
+## 3. Development Constraints
 
-After discovery, the AI agent should propose a short plan.
+Use these constraints for every ticket in the migration:
+- Preserve current behavior unless the ticket explicitly changes it.
+- Follow existing code patterns.
+- Make the smallest coherent change.
+- Modify only files required by the approved plan.
+- Do not perform opportunistic cleanup.
+- Do not reformat unrelated files.
+- Do not introduce dependencies without approval.
+- Do not create a new abstraction merely because one looks cleaner.
+- Do not expose sensitive data.
+- Separate verified facts from assumptions.
+- Stop and explain when the requested feature requires broader architectural work.
 
-The plan should include:
-- minimal implementation scope
-- files expected to change
-- existing patterns that should be reused
-- tests that should be added or updated
-- compatibility risks
-- migration or rollout considerations
-- rollback approach
-- unresolved questions
+These constraints keep the AI agent useful without letting it expand the ticket into an unplanned rewrite.
 
-The plan should be short enough to review. If it takes a long document to justify the change, the scope is probably too large or the system is not understood yet.
+## 4. Context Stored in the Repository
 
-## 3. Engineer Checkpoint
-
-Before implementation, the engineer checks the plan.
-
-Verify that:
-- current behavior is understood
-- scope is minimal
-- the plan follows existing architecture
-- assumptions are explicitly marked
-- no unrelated refactoring is included
-- validation and rollback are realistic
-
-This is where the engineer corrects the AI agent's assumptions and narrows the work before code changes begin.
-
-## 4. AI-Assisted Implementation
-
-The AI agent should:
-- follow the reviewed plan
-- modify only required files
-- preserve existing behavior outside the requested change
-- reuse existing patterns
-- avoid opportunistic cleanup
-- avoid large refactoring unless required
-- add or update tests with the implementation
-- report any necessary deviation from the plan
-
-If implementation reveals that the approved plan is incorrect, stop and revise the plan before expanding the scope.
-
-For example, replacing an old API client should not also rename unrelated modules, change formatting across the repository, or restructure tests unless the change requires it.
-
-## 5. Validation and AI Review
-
-Validation should match the risk and shape of the change.
-
-Check what is relevant:
-- existing tests
-- new tests
-- happy path
-- failure path
-- edge cases
-- integration behavior
-- configuration compatibility
-- deployment or startup validation
-- relevant logs, metrics, health checks, and application behavior
-
-Relevant logs, metrics, health checks, and application behavior should show no unexpected regression after the change.
-
-After validation, use AI review on the final diff. The AI agent should:
-- inspect the final diff
-- compare it with the original request and reviewed plan
-- identify unnecessary changes
-- identify missing tests
-- check backward compatibility
-- check operational impact
-- report issues without automatically rewriting the implementation
-
-A fresh AI session can be used for final review. Human review remains responsible for accepting or rejecting the result.
-
-## 6. Deployment and Observation
-
-Deploy through the normal process for the project.
-
-After deployment:
-- verify health checks
-- inspect relevant logs and metrics
-- validate the changed behavior
-- execute rollback if agreed failure signals appear
-
-Keep this focused on the actual change. A small internal-tool refactor does not need the same rollout notes as a risky integration migration.
-
-## 7. Preserve Useful Context
-
-Work completed for Feature A should reduce rediscovery when Feature B is implemented later.
-
-Useful durable context may include:
-- ADRs for architectural decisions
-- feature notes for non-obvious behavior
-- changelog entries for historical traceability
-- operational notes for deployment, monitoring, failure handling, and recovery
-- concise comments only where the code cannot explain the reasoning clearly
-
-Do not create documentation for every trivial change.
-
-Use this rule of thumb:
-- Create an ADR only for a meaningful architectural decision.
-- Create a feature note when behavior or integration logic needs explanation.
-- Add an operational note when deployment, monitoring, or recovery changes.
-- Use a changelog entry for a concise history of notable changes.
-
-Previous PR review findings can be useful context, but they do not need a separate document for every pull request. Preserve only the review notes that explain risk, tradeoffs, or future work.
-
-## 8. Feature A to Feature B Example
-
-Feature A replaces an old on-call notification provider with a new external integration.
-
-During the work, the engineer stores durable context:
-- mapping rules between old and new event fields
-- retry behavior and timeout assumptions
-- configuration keys and secret references
-- rollout decision and fallback option
-- known limitations that were accepted
-
-Later, Feature B adds another notification path. The next engineer or AI session reads the stored context first, then inspects the related code. They do not need to reconstruct the migration from commit history, chat logs, or guesswork.
-
-That is the point of durable context: each feature should make the next related feature easier to understand.
-
-## 9. Recommended Repository Structure
-
-Keep documentation close to the repository and easy to scan.
-
-Example:
+This is an example structure, not a mandatory convention:
 
 ```text
 docs/
-|-- adr/
+|-- system-context.md
+|-- decisions/
+|   `-- 001-provider-migration-strategy.md
 |-- features/
-|-- changelog.md
-|-- ai-assisted-development.md
-`-- legacy-application-development.md
+|   |-- DEVOPS-101-provider-boundary.md
+|   |-- DEVOPS-102-provider-b-on-call-lookup.md
+|   `-- DEVOPS-103-provider-b-maintenance-window.md
+|-- work-in-progress/
+|   `-- DEVOPS-104-provider-routing.md
+`-- changelog.md
 ```
 
-Suggested use:
-- `docs/adr/`: meaningful architecture decisions
-- `docs/features/`: feature notes for non-obvious behavior
-- `docs/changelog.md`: concise history of notable changes
-- `docs/ai-assisted-development.md`: general AI-assisted development guide
-- `docs/legacy-application-development.md`: this legacy workflow
+Purpose of each type:
+- `system-context.md`: stable facts about the `Internal ChatOps Bot`, important commands, runtime behavior, configuration patterns, deployment notes, and known integration boundaries.
+- `decisions/`: decisions affecting multiple tickets, such as the migration strategy or provider-selection approach.
+- `features/`: completed ticket context, including what changed, what was tested, what assumptions were accepted, and what future work should know.
+- `work-in-progress/`: an active checkpoint used to continue later in a new AI session or by another engineer.
+- `changelog.md`: short operational or user-visible changes.
 
-## 10. Workflow Diagram
+Do not create a separate permanent PR review document for every pull request. Important review conclusions can be stored in the relevant feature note or decision record.
 
-The Eraser workflow diagram shows the loop from feature request through discovery, planning, implementation, review, deployment, documentation, and future context reuse.
+## 5. Initial Repository Review
+
+Before migration work begins, ask the AI agent to inspect the current application and identify the real flow. During this step, the agent must not modify code.
+
+The AI agent should identify:
+- application entry points
+- command handlers
+- `Provider A` client and API calls
+- business-logic or service boundaries
+- configuration and secret loading
+- error handling
+- retries and timeouts
+- logging conventions
+- existing tests and mocks
+- deployment configuration
+- every relevant direct dependency on `Provider A`
+
+Example prompt:
+
+```text
+Inspect the repository for the Internal ChatOps Bot migration from Provider A to Provider B.
+Do not modify files.
+Identify exact paths, functions, classes, commands, configuration keys, tests, mocks, and direct Provider A dependencies.
+Separate verified facts from assumptions and keep the findings concise.
+```
+
+The output from this review should become the initial system context or the starting section of the first feature note.
+
+## 6. Feature-by-Feature Migration
+
+Split the migration into independently testable tickets:
+
+```text
+DEVOPS-101 - Isolate Provider A behind the smallest useful boundary
+DEVOPS-102 - Add Provider B read-only on-call lookup
+DEVOPS-103 - Add Provider B maintenance-window support
+DEVOPS-104 - Add configuration-based provider routing
+```
+
+`DEVOPS-101` creates the smallest boundary needed to stop command handlers from depending directly on `Provider A` details. It should preserve `Provider A` behavior and avoid a large provider framework.
+
+`DEVOPS-102` adds `Provider B` support for read-only on-call lookup. Read-only behavior is a safer first integration step because it does not create external state.
+
+`DEVOPS-103` adds `Provider B` maintenance-window support. This is higher risk because it creates or changes external state, so error handling, retries, idempotency, and rollback behavior matter more.
+
+`DEVOPS-104` adds configuration-based provider routing so different teams or environments can use different providers. Routing should come after the underlying operations exist.
+
+Keep one independently testable change per ticket. `Provider A` must remain functional throughout the migration. A feature ticket should not hide a large refactor.
+
+## 7. Feature Development Lifecycle
+
+Use this lifecycle for each ticket:
+
+```text
+Feature Request
+-> Load Existing Context
+-> Targeted Repository Review
+-> Feature Plan
+-> Human Approval
+-> AI-Assisted Implementation
+-> Local Testing
+-> AI-Assisted Review
+-> Human Review
+-> Merge and Deploy
+-> Post-Deployment Verification
+-> Update Feature Context
+-> Context Available to the Next Ticket
+```
+
+Step summary:
+- Feature Request: capture the ticket goal, acceptance criteria, constraints, and rollback expectations.
+- Load Existing Context: read repository instructions, system context, relevant decisions, related feature notes, and any active work-in-progress checkpoint.
+- Targeted Repository Review: inspect only the code paths relevant to the current ticket and compare repository state with the saved context.
+- Feature Plan: ask the AI agent for the smallest implementation plan, expected files, test plan, compatibility risks, and rollback implications.
+- Human Approval: the engineer reviews the plan before implementation starts.
+- AI-Assisted Implementation: the AI agent makes the approved change while the engineer owns the result.
+- Local Testing: run relevant tests and validation. Failed tests return the work to implementation.
+- AI-Assisted Review: inspect the final diff against the request and plan. Review changes return the work to implementation and testing.
+- Human Review: the engineer accepts or rejects the change based on correctness, supportability, and risk.
+- Merge and Deploy: deploy through the normal process.
+- Post-Deployment Verification: verify the deployed behavior. A failed deployment or verification can trigger rollback.
+- Update Feature Context: finalize the completed feature note only after verification.
+- Context Available to the Next Ticket: the next ticket starts from saved context rather than rediscovering everything.
+
+Feature Plan comes before Human Approval. Implementation starts only after the plan is approved.
+
+## 8. Feature Context Template
+
+Use a feature note or work-in-progress checkpoint to record only the context needed to understand and continue the work. Do not duplicate the implementation.
+
+```markdown
+# DEVOPS-XXX: Feature Name
+
+## Objective
+
+## Starting Context
+
+## Relevant Previous Work
+
+## Relevant Code
+
+## Constraints
+
+## Approved Plan
+
+## Files Expected to Change
+
+## Implementation Progress
+
+## Files Changed and Why
+
+## Tests Executed
+
+- Passed:
+- Failed:
+- Not executed:
+- Blocked:
+
+## Decisions and Assumptions
+
+## Known Gaps
+
+## Current Git State
+
+## Exact Next Step
+
+## Deployment and Rollback
+
+## Final Result
+```
+
+Never state that tests passed unless they were actually executed. If tests were skipped, failed, or blocked, record that plainly.
+
+## 9. Continuing in a New AI Session
+
+Before ending a session, save enough state for another session to continue without guessing:
+- current branch
+- latest relevant commit
+- modified and untracked files
+- completed work
+- incomplete work
+- exact next coding step
+- tests executed and results
+- known failures
+- temporary assumptions
+- unresolved questions
+- constraints that must remain unchanged
+
+Session-end prompt:
+
+```text
+Update the active work-in-progress document for DEVOPS-XXX using the current repository and Git state as the source of truth.
+Record the current branch, latest relevant commit, modified and untracked files, completed work, incomplete work, exact next step, tests executed with results, known failures, assumptions, unresolved questions, and constraints that must not change.
+Do not claim tests passed unless the commands were actually executed.
+```
+
+Next-session prompt:
+
+```text
+Continue DEVOPS-XXX.
+First read repository instructions, docs/system-context.md, relevant decision records, directly related completed feature notes, and the active work-in-progress checkpoint.
+Then inspect git status, git diff, and only the implementation files relevant to this ticket.
+Compare the checkpoint with the actual repository state.
+Report what is complete, what remains, any conflicts between documentation and Git state, and the next recommended step.
+Wait for approval before modifying files if documentation and Git state conflict.
+```
+
+The saved checkpoint reduces repeated discovery, but it does not replace verification against the current code and Git state.
+
+## 10. Starting the Next Ticket
+
+The next ticket should not load the complete repository history. Load context in layers.
+
+Always read:
+- repository-level agent instructions
+- stable system context
+- active work-in-progress context
+
+Read when relevant:
+- directly related feature notes
+- applicable decision records
+- deployment or operational documentation
+
+Inspect directly:
+- current Git state
+- implementation files relevant to the ticket
+- relevant tests
+- configuration affected by the change
+
+Prompt for a related ticket:
+
+```text
+Start DEVOPS-104 for configuration-based provider routing in the Internal ChatOps Bot.
+Before modifying code, read the stable system context, Provider A to Provider B migration decision, DEVOPS-101 through DEVOPS-103 feature notes, and any active work-in-progress checkpoint.
+Inspect git status, git diff, relevant provider-selection code, command handlers, tests, and configuration.
+Return your understanding of the current implementation, existing patterns that must remain, exact files likely to change, compatibility risks, implementation plan, test plan, and rollback implications.
+Do not modify files yet.
+```
+
+This keeps the AI agent focused on the current ticket while still preserving the history that matters.
+
+## 11. Validation and Deployment
+
+Local validation should record exact commands and actual results.
+
+For a dual-provider migration, cover the scenarios relevant to the ticket:
+- `Provider A` selected
+- `Provider B` selected
+- missing provider configuration
+- invalid provider configuration
+- expected external API failure
+- provider timeout or unavailability where practical
+- unchanged user-facing behavior
+- configuration-based rollback
+
+After deployment, record:
+- version or commit
+- environment
+- deployment result
+- smoke tests
+- relevant logs, metrics, or dashboard observations
+- unexpected behavior
+- rollback status
+- follow-up work
+
+Deployment is not complete until post-deployment verification is performed. If verification fails, use the agreed rollback path, such as switching configuration back to `Provider A` where practical.
+
+## 12. Workflow Diagram
+
+The existing diagram reference is kept for now:
 
 ![Legacy application development workflow](images/ai-assisted-feature-development-flow.png)
 
-Step summary:
-- Feature Request: define the problem, constraints, and acceptance criteria.
-- Repository Review: use the AI agent to inspect the existing system before choosing an approach.
-- Feature Plan: ask the AI agent for a short implementation, validation, and rollback plan.
-- Engineer Checkpoint: verify the plan and narrow scope before code changes.
-- AI Implementation: make the reviewed change and preserve existing behavior outside the request.
-- Local Testing: run tests and validation relevant to the change.
-- AI PR Review: inspect the final diff for unnecessary changes, missing tests, compatibility risks, and operational impact.
-- Human Review: accept or reject the result based on understanding, supportability, and risk.
-- Merge & Deploy: release through the normal process and observe the changed behavior.
-- Update Docs: record only useful durable context.
-- Next Feature Context: feed ADRs, feature notes, changelog entries, and operational notes into the next related change.
+The replacement diagram should show the intended flow:
+- the primary feature-development loop from request through post-deployment verification
+- local-test failures returning to AI-assisted implementation
+- review changes returning to implementation and testing
+- failed deployment or verification triggering rollback
+- repository context flowing into feature development
+- updated feature context flowing back into the knowledge base
+- a separate session-continuation loop that uses work-in-progress context and current Git state
 
-## 11. Practical Checklist
+Until the image is regenerated, treat this section as the intended diagram behavior rather than a claim that the current layout is complete.
 
-- Repository context inspected.
-- Existing behavior understood.
-- Assumptions documented.
-- Implementation plan reviewed.
-- Scope kept minimal.
-- Tests added or updated.
-- Failure paths checked.
-- Final diff reviewed.
-- Deployment signals identified.
-- Rollback understood.
-- Useful durable context preserved.
+## 13. Expected Result
+
+After the migration work has been documented well, a future engineer or AI agent should be able to answer:
+- Why are two providers supported?
+- Which provider is currently the default?
+- How is the provider selected?
+- Which `Provider B` capabilities are complete?
+- Which existing behavior must remain unchanged?
+- Which decisions were deliberate?
+- Which files are relevant?
+- What was completed in the previous session?
+- What is the exact next step?
+- How is the feature tested?
+- How is it deployed and rolled back?
+
+Context preservation has failed if these answers require searching old AI chat transcripts or repeating a full repository investigation.
