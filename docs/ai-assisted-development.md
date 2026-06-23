@@ -2,389 +2,198 @@
 
 ## Purpose
 
-This document describes how AI tools can support engineering work when used with clear context, review, and constraints.
+This document describes a practical approach to AI-assisted software development. It focuses on providing useful context, limiting the scope of changes, validating generated code, and keeping the engineer responsible for the final result.
 
-The goal is not to blindly trust AI, but to use it as an assistant for understanding, drafting, refactoring, documenting, testing, and reviewing work. Human judgment remains the final authority.
+It is a personal working guide, not an official standard. The goal is to make AI coding tools useful without letting them make unreviewed architecture, security, or production decisions.
 
-## What Are Generative LLMs?
+## What AI Coding Tools Help With
 
-Generative LLMs generate text or code based on patterns and context.
-They do not truly understand systems the way humans do.
-They can produce useful drafts but can also produce wrong or outdated answers.
-They need clear context and human review.
+LLMs and AI coding agents can help with:
+- reading and summarizing repository structure
+- explaining unfamiliar code
+- proposing implementation plans
+- drafting small code or documentation changes
+- adding or improving tests
+- reviewing diffs for bugs, missing tests, and unnecessary changes
+- summarizing errors, logs, and command output
+
+CLI agents can inspect local files, propose plans, modify files, and run commands when allowed. That access is useful, but generated output can be wrong, incomplete, or based on bad assumptions.
 
 > [!NOTE]
-> LLM output can be a very useful starting point, but it may be incorrect, incomplete, or outdated. Always verify the results against documentation and reality.
+> Treat AI output as a draft. Review it against the repository, tests, documentation, and the actual behavior of the system.
 
-## What Is Gemini CLI?
+## Repository Context
 
-Gemini CLI is a terminal-based AI coding assistant that can work with local project context.
+AI tools work better when the repository contains durable context that can be read without reconstructing everything from scratch.
 
-Typical use cases:
-- understanding a codebase
-- explaining files
-- drafting documentation
-- writing or improving tests
-- proposing refactors
-- generating scripts
-- reviewing changes
-- summarizing errors and logs
-
-## Markdown Files and AI Context
-
-Markdown files are useful for AI-assisted work because they are:
-- easy to read
-- easy to version in Git
-- easy to review in pull requests
-- easy for AI tools to consume
-- good for documenting conventions and decisions
-
-Common examples:
+Useful context files include:
 - `README.md`
-- `GEMINI.md`
+- repository instructions such as `GEMINI.md`
 - `docs/*.md`
-- ADR documents
+- ADRs
 - runbooks
 - troubleshooting notes
+- changelogs and feature notes
 
-## What Is GEMINI.md?
+A repository-level instruction file is normally placed at the root, while component-specific instructions may also exist in relevant subdirectories.
 
-`GEMINI.md` is used to provide persistent project context and instructions to Gemini CLI.
-
-It should include:
-- project purpose
-- tech stack
-- coding conventions
-- test commands
-- lint commands
-- formatting rules
+Repository instructions can include:
 - project structure
-- rules for safe changes
-- documentation style
-- commands that should not be run without approval
+- build and test commands
+- architecture constraints
+- coding conventions
+- files or directories that should not be modified
+- deployment and validation requirements
+- commands that require approval
 
-It should not include:
+They should not include:
 - secrets
 - passwords
 - tokens
 - private credentials
 - temporary personal notes
-- huge duplicated documentation
-- vague instructions
+- large duplicated documentation
 
-> [!WARNING]
-> Secrets, tokens, passwords, and private credentials must never be stored in `GEMINI.md` or any other committed context file.
-
-## Example GEMINI.md for a Python Project
+Example:
 
 ```markdown
-# Project Context
+# Repository Instructions
 
-This is a Python project.
+## Project Shape
 
-## Tech Stack
+- Python service with tests under `tests/`
+- API code under `src/api/`
+- Background jobs under `src/jobs/`
 
-- Python 3.x
-- pytest
-- ruff
-- mypy
-
-## Common Commands
+## Commands
 
 - Run tests: `pytest`
 - Run linting: `ruff check .`
-- Run formatting: `ruff format .`
-- Run type checks: `mypy .`
+- Format: `ruff format .`
 
-## Coding Rules
+## Change Rules
 
 - Keep changes small and reviewable.
-- Prefer simple code over clever code.
+- Reuse existing patterns before adding new ones.
+- Do not modify deployment files without approval.
 - Add or update tests when behavior changes.
-- Do not change public APIs without explaining why.
-- Do not introduce new dependencies without approval.
-
-## AI Assistant Rules
-
-- Explain the plan before making large changes.
-- Do not run destructive commands.
-- Do not modify secrets or credentials.
-- Show diffs or summarize changed files.
-- Ask for clarification if requirements are unclear.
+- Do not store secrets in documentation, prompts, or test fixtures.
 ```
 
-## What Are Skills?
+## Instructions, Skills, and MCP
 
-Skills are reusable instructions or behavior packs that help AI assistants perform specific types of work more consistently.
+These are different kinds of context and capability:
 
-Examples:
-- Python development skill
-- documentation writing skill
-- testing skill
-- Terraform review skill
-- API integration skill
+- Repository instructions: persistent project context and constraints stored with the repository.
+- Skills: reusable task-specific procedures that can be loaded when relevant.
+- MCP servers: controlled access to external tools or data sources.
 
-Skills should be specific and practical, not generic.
+Practical MCP examples include:
+- issue tracker access for ticket context
+- documentation lookup for current API behavior
+- cloud inventory for read-only resource discovery
+- source-control metadata for commits, branches, pull requests, and reviews
 
-## What Are MCP Servers?
+External access should follow least privilege. Avoid exposing unnecessary credentials, secrets, or production-changing access. Read-only access is usually enough for discovery and planning.
 
-MCP servers are a way to connect the AI assistant to external tools, data, or documentation.
+## Execution Controls
 
-Examples:
-- documentation search
-- GitHub integration
-- issue tracker integration
-- cloud documentation
-- local tools
-- internal APIs
+Before allowing an AI agent to modify files or run commands:
+- ask it to inspect relevant context first
+- ask for a short plan before implementation
+- limit changes to the current repository or directory
+- review commands before execution
+- use sandboxing where available
+- use approval modes where available
+- avoid automatic access to secrets
+- keep changes small enough to review in one sitting
 
-MCP increases capability but also increases risk, because the agent may gain access to tools or data.
+These controls are not a heavy process. They are guardrails that make the final diff easier to understand and safer to own.
 
-> [!NOTE]
-> Connecting an MCP server gives the assistant access to external tools or data, depending entirely on what the configured server exposes.
+## General Workflow
 
-## MCP Examples
+Use this compact loop for most AI-assisted changes:
 
-### Documentation MCP
+1. Understand the request.
+2. Inspect relevant context.
+3. Propose a plan.
+4. Confirm scope.
+5. Implement the smallest useful change.
+6. Run tests and validation.
+7. Review the final diff.
+8. Record useful durable context.
 
-Purpose:
-- Search official documentation.
-- Help answer questions about libraries, tools, APIs, or cloud services.
+For inherited or legacy applications, use the companion workflow in `legacy-application-development.md`.
 
-Useful for:
-- checking current syntax
-- reading API docs
-- comparing configuration options
-- reducing outdated answers
+## Prompt Examples
 
-Risk:
-- The assistant may still summarize incorrectly, so important claims should be verified.
-
-### GitHub MCP
-
-Purpose:
-- Read repositories, issues, pull requests, branches, and commits.
-- Help summarize changes or review context.
-
-Useful for:
-- understanding pull requests
-- summarizing issues
-- finding related code
-- drafting PR descriptions
-
-Risk:
-- Write access can be dangerous if enabled.
-- Creating branches, comments, issues, or pull requests should require review.
-
-### Local Filesystem MCP
-
-Purpose:
-- Give the assistant structured access to local project files.
-
-Useful for:
-- reading project structure
-- finding references
-- updating documentation
-- reviewing code
-
-Risk:
-- File write access should be controlled.
-- Destructive changes must not be approved blindly.
-
-### Cloud Provider MCP
-
-Purpose:
-- Query cloud resources, documentation, or account metadata depending on the server.
-
-Useful for:
-- reading cloud documentation
-- checking resource configuration
-- helping with troubleshooting
-
-Risk:
-- Never expose credentials in prompts or config files.
-- Prefer read-only access.
-- Production-changing actions must require human approval.
-
-### Internal Tools MCP
-
-Purpose:
-- Connect the assistant to internal APIs, ticketing systems, dashboards, or knowledge bases.
-
-Useful for:
-- finding runbooks
-- reading incidents
-- searching tickets
-- summarizing operational context
-
-Risk:
-- Access control matters.
-- Internal data may be sensitive.
-- Avoid sending unnecessary private data to the model.
-
-## Safe Use of MCP
-
-When using MCP:
-- only connect trusted MCP servers
-- avoid exposing secrets
-- understand what tools the MCP server provides
-- prefer read-only access where possible
-- review actions before execution
-- keep project and global configuration separate
-- do not blindly approve tool calls
-
-> [!CAUTION]
-> Write-capable MCP servers should be treated carefully because the assistant may be able to create issues, modify files, call APIs, or trigger automated actions.
-
-### Example MCP Configuration
-
-This generic example illustrates the shape of an MCP configuration. Real configuration depends on the chosen MCP server. Secrets should not be committed to this configuration file, and read-only access should be preferred first.
-
-```json
-{
-  "mcpServers": {
-    "docs": {
-      "command": "example-docs-mcp",
-      "args": []
-    },
-    "github-readonly": {
-      "command": "example-github-mcp",
-      "args": ["--read-only"]
-    }
-  }
-}
-```
-
-## How to Use Gemini CLI in a Python Project
-
-1. Start with context
-   - Make sure `README.md` and `GEMINI.md` are clear.
-2. Ask for understanding first
-   - Example prompt: "Read the project structure and summarize how the application works."
-3. Ask for a plan before changes
-   - Example prompt: "Before editing files, propose a short plan."
-4. Keep changes small
-   - Example prompt: "Refactor only this module and do not change behavior."
-5. Require tests
-   - Example prompt: "Add or update pytest tests for this behavior."
-6. Review the diff
-   - Example prompt: "Summarize the changed files and explain why each change was needed."
-7. Run validation
-   - Example prompt: "Run tests and linting. If something fails, explain the failure before fixing it."
-
-> [!TIP]
-> The safest workflow is: understand first, plan second, change third, review last.
-
-## Good Prompt Examples
+Good prompts are specific about objective, scope, constraints, and validation.
 
 ```text
-Read this repository and summarize the main components, entry points, and test setup. Do not change files.
+Read the repository instructions, README, and files under `src/billing/`.
+Summarize the current billing export flow and list likely files for this change.
+Do not modify files.
 ```
 
 ```text
-Review this module for readability and possible bugs. Do not edit anything yet. Give me findings first.
+Plan a minimal change for replacing the deprecated export API in `src/billing/`.
+Reuse existing patterns, list expected files, identify tests to update, and include rollback notes.
+Do not write code yet.
 ```
 
 ```text
-Create a small refactor plan for this function. Keep behavior unchanged and include test impact.
+Implement the approved plan only.
+Do not refactor unrelated code.
+Run the relevant tests and summarize the final diff.
 ```
 
 ```text
-Add pytest coverage for this edge case. Keep the production code unchanged unless required.
+Review this diff against the acceptance criteria, existing architecture, test coverage, security risks, production impact, and rollback approach.
+Report issues without modifying files.
 ```
 
-```text
-Explain this error log and suggest the most likely root cause. Do not make changes yet.
-```
-
-```text
-Update the documentation to match the current code. Do not invent features that are not present.
-```
-
-## Bad Prompt Examples
+Bad prompts hide scope or skip review.
 
 ```text
 Fix everything.
 ```
-Too broad.
 
 ```text
-Rewrite the whole project.
+Rewrite this project.
 ```
-Too risky.
 
 ```text
 Make it production ready.
 ```
-Too vague.
 
 ```text
-Run whatever commands you need.
-```
-Unsafe.
-
-## What Not to Delegate Blindly
-
-Do not delegate the following blindly:
-- security decisions
-- production changes
-- infrastructure changes
-- dependency upgrades
-- authentication/authorization changes
-- data migrations
-- secrets handling
-- incident response actions
-- cost-impacting cloud changes
-
-AI can help draft and analyze these, but a human must review and approve.
-
-## Practical Review Checklist
-
-- Did the AI understand the project context?
-- Are the changes small and reviewable?
-- Are tests included or updated?
-- Were new dependencies introduced?
-- Were secrets or credentials touched?
-- Were commands safe?
-- Is the reasoning clear?
-- Does the final diff match the original request?
-
-## Recommended Repository Structure
-
-`GEMINI.md` belongs at the repository root because it provides project-level context to the AI assistant.
-
-### Example structure for this repository
-
-```text
-.
-├── GEMINI.md
-├── README.md
-├── ansible/
-├── docs/
-│   ├── ai-assisted-development.md
-│   ├── adr-template.md
-│   └── runbooks/
-└── aws-azure-service-comparison.md
+Run whatever commands you need and commit the result.
 ```
 
-### Example structure for a Python project
+## AI Review
 
-```text
-.
-├── GEMINI.md
-├── README.md
-├── docs/
-│   ├── ai-assisted-development.md
-│   ├── adr-template.md
-│   └── runbooks/
-├── src/
-└── tests/
-```
+AI review is most useful after tests have run and the final diff exists.
 
-## Final Notes
+Ask the AI agent to:
+- inspect the final diff
+- compare the result with the original request
+- look for unnecessary changes
+- identify missing tests
+- check compatibility risks
+- call out failure paths and rollback concerns
+- report findings without rewriting the implementation automatically
 
-- AI is useful when context is clear.
-- Markdown makes context reviewable.
-- `GEMINI.md` gives project-specific instructions.
-- MCP adds tool access, but must be controlled.
-- Small changes, tests, and human review are still required.
+A fresh AI session may reduce the chance of repeating assumptions made during implementation. It still does not replace human review.
+
+## Practical Checklist
+
+- Request understood.
+- Relevant context inspected.
+- Plan reviewed.
+- Scope limited.
+- Unrelated files untouched.
+- Tests or validation executed.
+- Failure paths considered.
+- Final diff reviewed.
+- Secrets not exposed.
+- Useful durable context documented.
