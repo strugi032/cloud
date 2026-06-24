@@ -318,20 +318,7 @@ Deployment is not complete until post-deployment verification is performed. If v
 
 ## 12. Workflow Diagram
 
-The existing diagram reference is kept for now:
-
 ![Legacy application development workflow](images/ai-assisted-feature-development-flow.png)
-
-The replacement diagram should show the intended flow:
-- the primary feature-development loop from request through post-deployment verification
-- local-test failures returning to AI-assisted implementation
-- review changes returning to implementation and testing
-- failed deployment or verification triggering rollback
-- repository context flowing into feature development
-- updated feature context flowing back into the knowledge base
-- a separate session-continuation loop that uses work-in-progress context and current Git state
-
-Until the image is regenerated, treat this section as the intended diagram behavior rather than a claim that the current layout is complete.
 
 ## 13. Expected Result
 
