@@ -9,14 +9,11 @@ This repository serves as a collection of infrastructure-as-code (IaC), automati
 ## Repository Structure
 
 - `ansible/`: Ansible playbooks and roles for configuration management.
-- `docs/`: In-depth documentation, ADRs (Architectural Decision Records), and checklists for cloud operations.
 - `templates/`: Reusable IaC templates (e.g., AWS KMS, Security Groups).
 
-## Key Content
+## Documentation
 
-- **[Observability Checklist](./docs/observability-checklist.md)**: A comprehensive guide for ensuring service visibility.
-- **[CI/CD Standards](./docs/ci-cd-standards.md)**: Best practices for building robust delivery pipelines.
-- **[Cloud Migration Risk Register](./docs/cloud-migration-risk-register.md)**: Framework for assessing migration risks.
+Documentation has been moved out of this repository into a standalone `docs` repository.
 
 ## Related Repositories
 

@@ -13,6 +13,7 @@ kubeconfig
 kind-config.yaml
 .helm/
 .DS_Store
+docs/
 kubeconfig
 kind-config.yaml
 .helm/
